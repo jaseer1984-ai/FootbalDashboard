@@ -44,11 +44,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 @st.cache_data
-def load_data():
+def load_data(uploaded_file=None):
     """Load and process the Excel data"""
     try:
-        # Read the Excel file - no headers since we have custom structure
-        df = pd.read_excel('Goal Score.xlsx', sheet_name='Sheet1', header=None)
+        # Try to read from uploaded file first, then from local file
+        if uploaded_file is not None:
+            df = pd.read_excel(uploaded_file, sheet_name='Sheet1', header=None)
+        else:
+            df = pd.read_excel('Goal Score.xlsx', sheet_name='Sheet1', header=None)
         
         all_data = []
         
@@ -80,8 +83,6 @@ def load_data():
         return processed_df
     
     except FileNotFoundError:
-        st.error("❌ Goal Score.xlsx file not found. Please upload your Excel file.")
-        # Return empty DataFrame
         return pd.DataFrame(columns=['Division', 'Team', 'Player', 'Goals'])
     except Exception as e:
         st.error(f"❌ Error reading Excel file: {str(e)}")
@@ -96,12 +97,36 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
+    # File upload section
+    st.subheader("📁 Data Source")
+    uploaded_file = st.file_uploader(
+        "Upload your Goal Score.xlsx file", 
+        type=['xlsx'], 
+        help="Upload an Excel file with B Division (columns A,B,C) and A Division (columns F,G,H)"
+    )
+    
     # Load data
-    df = load_data()
+    df = load_data(uploaded_file)
     
     if df.empty:
-        st.warning("⚠️ No data loaded. Please check your Excel file format.")
-        st.info("Expected format: B Division (columns A,B,C) and A Division (columns F,G,H)")
+        if uploaded_file is None:
+            st.info("📤 Please upload your Goal Score.xlsx file above, or ensure it's in the GitHub repository.")
+            st.write("**Expected Excel format:**")
+            st.write("- Row 1: 'B Division' in column B, 'A Division' in column G")
+            st.write("- Row 2: Headers (Team, Player Name, Nos. of Goals)")
+            st.write("- Row 3+: Data")
+            
+            # Show sample data structure
+            sample_data = pd.DataFrame({
+                'Division': ['B Division', 'B Division', 'A Division', 'A Division'],
+                'Team': ['Bluestar B', 'Newcastle FC', 'Blasters FC', 'Real Kerala'],
+                'Player': ['Alan Solaman', 'Muhammed Shuhaib', 'Muhammed Jiyad', 'Muhamed Ashik'],
+                'Goals': [2, 1, 2, 1]
+            })
+            st.write("**Sample data structure:**")
+            st.dataframe(sample_data, use_container_width=True)
+        else:
+            st.error("❌ Could not process the uploaded file. Please check the format.")
         return
     
     # Show data loading success
