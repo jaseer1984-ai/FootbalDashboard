@@ -1,4 +1,4 @@
-# app.py — Football Goals Dashboard (safe for 0/1 players, team filter, XLSX fallback)
+# app.py — Football Goals Dashboard (handles 0/1/2+ players, team filter, XLSX fallback)
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -195,7 +195,7 @@ def main():
     else:
         st.altair_chart(bar_chart(team_goals, "Team", "Goals", "Goals by Team"), use_container_width=True)
 
-    # -------- Top Scorers (handles 0 / 1 / many players) --------
+    # -------- Top Scorers (safe for 0, 1, and 2+ players) --------
     st.subheader("Top Scorers")
     player_goals = (
         filtered.groupby("Player")["Goals"]
@@ -214,12 +214,14 @@ def main():
             use_container_width=True,
         )
     else:
+        # Use min_value=1 so min < max even when there are exactly 2 players.
         default_top = min(10, max_players)
         top_n = st.sidebar.slider(
             "Top N players",
-            min_value=2,                # avoid min==max crash when 1 player (we're in else so >=2)
+            min_value=1,
             max_value=max_players,
             value=int(default_top),
+            key=f"topn_{max_players}",   # avoid state clashes when max changes
         )
         st.altair_chart(
             bar_chart(player_goals.head(int(top_n)), "Player", "Goals", f"Top {int(top_n)} Players by Goals"),
