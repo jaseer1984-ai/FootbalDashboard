@@ -1,4 +1,4 @@
-# app.py — Football Goals Dashboard (safe slider, team filter, XLSX fallback)
+# app.py — Football Goals Dashboard (safe for 0/1 players, team filter, XLSX fallback)
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -136,17 +136,6 @@ def pie_chart(df: pd.DataFrame) -> alt.Chart:
         .properties(title="Goals by Division")
     )
 
-def safe_slider(label: str, max_players: int, default_top: int) -> int | None:
-    """
-    Render a slider only if max_players >= 1. Clamp default within [1, max_players].
-    Returns None if not rendered.
-    """
-    if max_players is None or int(max_players) < 1:
-        return None
-    max_players = int(max_players)
-    value = max(1, min(int(default_top), max_players))
-    return st.sidebar.slider(label, min_value=1, max_value=max_players, value=value)
-
 def _find_local_excel() -> Path | None:
     for p in [Path("Goal Score.xlsx"), Path(__file__).parent / "Goal Score.xlsx"]:
         if p.exists():
@@ -161,6 +150,7 @@ def main():
     st.title("Football Goals Dashboard")
     st.write("Explore goal-scoring statistics for A and B divisions.")
 
+    # Data source
     st.sidebar.header("Data source")
     up = st.sidebar.file_uploader("Upload Goal Score.xlsx", type=["xlsx"])
     if up is not None:
@@ -195,30 +185,46 @@ def main():
     # -------- Goals by Team --------
     st.subheader("Goals by Team")
     team_goals = (
-        filtered.groupby("Team")["Goals"].sum().reset_index().sort_values("Goals", ascending=False)
+        filtered.groupby("Team")["Goals"]
+        .sum()
+        .reset_index()
+        .sort_values("Goals", ascending=False)
     )
     if team_goals.empty:
         st.info("No team data to display for the current filters.")
     else:
         st.altair_chart(bar_chart(team_goals, "Team", "Goals", "Goals by Team"), use_container_width=True)
 
-    # -------- Top Scorers (safe slider) --------
+    # -------- Top Scorers (handles 0 / 1 / many players) --------
     st.subheader("Top Scorers")
     player_goals = (
-        filtered.groupby("Player")["Goals"].sum().reset_index().sort_values("Goals", ascending=False)
+        filtered.groupby("Player")["Goals"]
+        .sum()
+        .reset_index()
+        .sort_values("Goals", ascending=False)
     )
     max_players = int(player_goals.shape[0])
-    if max_players < 1:
+
+    if max_players == 0:
         st.info("No player data to display for the current filters (try clearing the Team filter).")
+    elif max_players == 1:
+        st.caption("Only one player found — showing that player.")
+        st.altair_chart(
+            bar_chart(player_goals.head(1), "Player", "Goals", "Top 1 Player by Goals"),
+            use_container_width=True,
+        )
     else:
-        top_n = safe_slider("Top N players", max_players=max_players, default_top=10)
-        if top_n is None:
-            st.info("No player data to display for the current filters.")
-        else:
-            st.altair_chart(
-                bar_chart(player_goals.head(top_n), "Player", "Goals", f"Top {top_n} Players by Goals"),
-                use_container_width=True,
-            )
+        default_top = min(10, max_players)
+        top_n = st.sidebar.slider(
+            "Top N players",
+            min_value=2,                # avoid min==max crash when 1 player (we're in else so >=2)
+            max_value=max_players,
+            value=int(default_top),
+        )
+        st.altair_chart(
+            bar_chart(player_goals.head(int(top_n)), "Player", "Goals", f"Top {int(top_n)} Players by Goals"),
+            use_container_width=True,
+        )
 
     # -------- Division distribution --------
     if div_sel == "All" and not data.empty:
