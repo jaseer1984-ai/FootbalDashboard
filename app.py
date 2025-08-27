@@ -5,7 +5,7 @@ from pathlib import Path
 
 def load_and_prepare_data(file_obj) -> pd.DataFrame:
     """Load the Excel file and reshape it into a tidy DataFrame."""
-    # Accept either a Path or a file‑like object
+    # Read the Excel file; requires openpyxl in the environment
     raw_df = pd.read_excel(file_obj)
 
     # Process B division columns
@@ -69,7 +69,7 @@ def display_metrics(df: pd.DataFrame) -> None:
     col3.metric("Number of Teams", f"{num_teams}")
 
 def main():
-    # Page configuration:contentReference[oaicite:2]{index=2}
+    # Page configuration: title, icon, and layout:contentReference[oaicite:1]{index=1}
     st.set_page_config(
         page_title="Football Goals Dashboard",
         page_icon="⚽",
@@ -79,11 +79,12 @@ def main():
     st.title("Football Goals Dashboard")
     st.write("Explore goal‑scoring statistics for A and B divisions.")
 
-    # Attempt to load the Excel file from the script directory
+    # Determine default file location relative to this script
     script_dir = Path(__file__).parent
     default_file_path = script_dir / "Goal Score.xlsx"
 
-    # Sidebar uploader in case the file isn’t found or to use custom file
+    # Sidebar file uploader
+    st.sidebar.header("Data")
     uploaded_file = st.sidebar.file_uploader("Upload Goal Score.xlsx", type=["xlsx"])
     if uploaded_file:
         data = load_and_prepare_data(uploaded_file)
@@ -94,7 +95,7 @@ def main():
             st.error("No data file found. Please upload Goal Score.xlsx.")
             return
 
-    # Sidebar division filter and top‑N slider
+    # Sidebar filters
     st.sidebar.header("Filters")
     divisions = ["All"] + sorted(data["Division"].unique().tolist())
     selected_division = st.sidebar.selectbox("Select Division", divisions)
