@@ -1,8 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import numpy as np
 
 # Set page config
@@ -30,8 +27,11 @@ st.markdown("""
         border-radius: 10px;
         border-left: 4px solid #1e3c72;
     }
-    .sidebar .sidebar-content {
+    .stMetric {
         background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid #e9ecef;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -143,86 +143,84 @@ def main():
         st.subheader("🏅 Top Goal Scorers")
         top_scorers = filtered_df.groupby('Player')['Goals'].sum().sort_values(ascending=False).head(10)
         
-        fig_top_scorers = px.bar(
-            x=top_scorers.values,
-            y=top_scorers.index,
-            orientation='h',
-            title="Top 10 Goal Scorers",
-            labels={'x': 'Goals', 'y': 'Player'},
-            color=top_scorers.values,
-            color_continuous_scale='viridis'
-        )
-        fig_top_scorers.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_top_scorers, use_container_width=True)
+        if not top_scorers.empty:
+            # Create a DataFrame for better display
+            top_scorers_df = pd.DataFrame({
+                'Player': top_scorers.index,
+                'Goals': top_scorers.values
+            })
+            
+            # Display as bar chart using Streamlit's built-in chart
+            st.bar_chart(top_scorers_df.set_index('Player'))
+            
+            # Also show as a table
+            st.dataframe(top_scorers_df, use_container_width=True)
+        else:
+            st.info("No data available for the selected filters.")
     
     with col2:
         st.subheader("🏟️ Goals by Team")
         team_goals = filtered_df.groupby('Team')['Goals'].sum().sort_values(ascending=False)
         
-        fig_team_goals = px.pie(
-            values=team_goals.values,
-            names=team_goals.index,
-            title="Goals Distribution by Team"
-        )
-        fig_team_goals.update_traces(textposition='inside', textinfo='percent+label')
-        fig_team_goals.update_layout(height=400)
-        st.plotly_chart(fig_team_goals, use_container_width=True)
+        if not team_goals.empty:
+            # Create a DataFrame for better display
+            team_goals_df = pd.DataFrame({
+                'Team': team_goals.index,
+                'Goals': team_goals.values
+            })
+            
+            # Display as bar chart
+            st.bar_chart(team_goals_df.set_index('Team'))
+            
+            # Show percentage breakdown
+            team_goals_df['Percentage'] = (team_goals_df['Goals'] / team_goals_df['Goals'].sum() * 100).round(1)
+            st.dataframe(team_goals_df, use_container_width=True)
+        else:
+            st.info("No data available for the selected filters.")
     
     # Charts Row 2
     col1, col2 = st.columns(2)
     
     with col1:
         st.subheader("🆚 Division Comparison")
-        division_stats = df.groupby('Division').agg({
-            'Goals': ['sum', 'mean', 'count'],
-            'Player': 'nunique',
-            'Team': 'nunique'
-        }).round(2)
-        
-        division_stats.columns = ['Total Goals', 'Avg Goals', 'Total Records', 'Unique Players', 'Unique Teams']
-        
-        fig_division = go.Figure()
-        
-        fig_division.add_trace(go.Bar(
-            name='Total Goals',
-            x=division_stats.index,
-            y=division_stats['Total Goals'],
-            yaxis='y',
-            offsetgroup=1
-        ))
-        
-        fig_division.add_trace(go.Scatter(
-            name='Avg Goals',
-            x=division_stats.index,
-            y=division_stats['Avg Goals'],
-            yaxis='y2',
-            mode='lines+markers',
-            line=dict(color='red', width=3),
-            marker=dict(size=8)
-        ))
-        
-        fig_division.update_layout(
-            title='Division Performance Overview',
-            xaxis=dict(title='Division'),
-            yaxis=dict(title='Total Goals', side='left'),
-            yaxis2=dict(title='Average Goals', side='right', overlaying='y'),
-            height=400
-        )
-        
-        st.plotly_chart(fig_division, use_container_width=True)
+        if len(df['Division'].unique()) > 1:
+            division_stats = df.groupby('Division').agg({
+                'Goals': ['sum', 'mean', 'count'],
+                'Player': 'nunique',
+                'Team': 'nunique'
+            }).round(2)
+            
+            division_stats.columns = ['Total Goals', 'Avg Goals', 'Total Records', 'Unique Players', 'Unique Teams']
+            
+            # Reset index to make Division a column
+            division_stats_display = division_stats.reset_index()
+            
+            # Display as table
+            st.dataframe(division_stats_display, use_container_width=True)
+            
+            # Show total goals by division as chart
+            total_goals_by_div = df.groupby('Division')['Goals'].sum()
+            st.bar_chart(total_goals_by_div)
+        else:
+            st.info("Need data from multiple divisions for comparison.")
     
     with col2:
         st.subheader("📈 Goal Distribution")
         
-        fig_hist = px.histogram(
-            filtered_df, 
-            x='Goals',
-            nbins=max(1, filtered_df['Goals'].max() - filtered_df['Goals'].min() + 1),
-            title="Distribution of Goals Scored",
-            labels={'Goals': 'Number of Goals', 'count': 'Number of Players'}
-        )
-        fig_hist.update_layout(height=400)
-        st.plotly_chart(fig_hist, use_container_width=True)
+        if not filtered_df.empty:
+            # Create histogram data
+            goal_counts = filtered_df['Goals'].value_counts().sort_index()
+            
+            # Display as bar chart
+            st.bar_chart(goal_counts)
+            
+            # Show statistics
+            st.write("**Distribution Statistics:**")
+            st.write(f"• Most common score: {goal_counts.index[0]} goals ({goal_counts.iloc[0]} players)")
+            st.write(f"• Highest score: {filtered_df['Goals'].max()} goals")
+            st.write(f"• Lowest score: {filtered_df['Goals'].min()} goals")
+        else:
+            st.info("No data available for the selected filters.")
     
     # Data Table
     st.subheader("📋 Detailed Data")
@@ -250,11 +248,31 @@ def main():
     else:
         display_df = display_df.sort_values('Team')
     
-    st.dataframe(
-        display_df.reset_index(drop=True),
-        use_container_width=True,
-        height=400
-    )
+    # Display the dataframe with highlighting for top performers
+    if not display_df.empty:
+        # Add rank column
+        display_df_with_rank = display_df.copy()
+        display_df_with_rank['Rank'] = display_df_with_rank['Goals'].rank(method='dense', ascending=False).astype(int)
+        
+        # Reorder columns
+        display_df_with_rank = display_df_with_rank[['Rank', 'Division', 'Team', 'Player', 'Goals']]
+        
+        st.dataframe(
+            display_df_with_rank.reset_index(drop=True),
+            use_container_width=True,
+            height=400
+        )
+        
+        # Download button
+        csv = display_df_with_rank.to_csv(index=False)
+        st.download_button(
+            label="📥 Download data as CSV",
+            data=csv,
+            file_name="football_goals_data.csv",
+            mime="text/csv"
+        )
+    else:
+        st.info("No data matches your search criteria.")
     
     # Summary Statistics
     st.subheader("📊 Summary Statistics")
@@ -262,21 +280,34 @@ def main():
     
     with col1:
         st.write("**Overall Statistics:**")
-        st.write(f"• Total goals scored: {df['Goals'].sum()}")
-        st.write(f"• Average goals per player: {df['Goals'].mean():.2f}")
-        st.write(f"• Highest individual score: {df['Goals'].max()}")
-        st.write(f"• Total unique players: {df['Player'].nunique()}")
-        st.write(f"• Total unique teams: {df['Team'].nunique()}")
+        if not df.empty:
+            st.write(f"• Total goals scored: {df['Goals'].sum()}")
+            st.write(f"• Average goals per player: {df['Goals'].mean():.2f}")
+            st.write(f"• Highest individual score: {df['Goals'].max()}")
+            st.write(f"• Total unique players: {df['Player'].nunique()}")
+            st.write(f"• Total unique teams: {df['Team'].nunique()}")
+            
+            # Top performer
+            top_player = df.groupby('Player')['Goals'].sum().idxmax()
+            top_goals = df.groupby('Player')['Goals'].sum().max()
+            st.write(f"• Top scorer: {top_player} ({top_goals} goals)")
     
     with col2:
         st.write("**Division Breakdown:**")
-        for division in df['Division'].unique():
-            div_data = df[df['Division'] == division]
-            st.write(f"**{division}:**")
-            st.write(f"  - Total goals: {div_data['Goals'].sum()}")
-            st.write(f"  - Players: {div_data['Player'].nunique()}")
-            st.write(f"  - Teams: {div_data['Team'].nunique()}")
-            st.write(f"  - Avg goals/player: {div_data['Goals'].mean():.2f}")
+        if not df.empty:
+            for division in df['Division'].unique():
+                div_data = df[df['Division'] == division]
+                st.write(f"**{division}:**")
+                st.write(f"  - Total goals: {div_data['Goals'].sum()}")
+                st.write(f"  - Players: {div_data['Player'].nunique()}")
+                st.write(f"  - Teams: {div_data['Team'].nunique()}")
+                if len(div_data) > 0:
+                    st.write(f"  - Avg goals/player: {div_data['Goals'].mean():.2f}")
+                    
+                    # Top scorer in division
+                    div_top_player = div_data.groupby('Player')['Goals'].sum().idxmax()
+                    div_top_goals = div_data.groupby('Player')['Goals'].sum().max()
+                    st.write(f"  - Top scorer: {div_top_player} ({div_top_goals} goals)")
 
 if __name__ == "__main__":
     main()
