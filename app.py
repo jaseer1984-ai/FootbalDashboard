@@ -1,5 +1,5 @@
-# ABEER BLUESTAR SOCCER FEST 2K25 — Enhanced Beautiful Dashboard
-# Modern UI with cards, light theme, and enhanced filters
+# ABEER BLUESTAR SOCCER FEST 2K25 — Complete Enhanced Beautiful Dashboard
+# Modern UI with cards, enhanced filters, and premium styling
 
 import streamlit as st
 import pandas as pd
@@ -10,15 +10,14 @@ import xml.etree.ElementTree as ET
 from io import BytesIO
 import requests
 from datetime import datetime
-# Using Altair instead of Plotly for better compatibility
 
-# ---------------------- BEAUTIFUL LIGHT THEME & CARDS -------------------------
-def inject_beautiful_css():
+# ---------------------- COMPLETE BEAUTIFUL STYLING -------------------------
+def inject_complete_beautiful_css():
     st.markdown("""
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-      /* Light theme base */
+      /* ==================== BASE STYLES ==================== */
       .stApp { 
         font-family: 'Inter', system-ui, -apple-system, sans-serif; 
         background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
@@ -32,7 +31,7 @@ def inject_beautiful_css():
         width: 95vw; 
       }
       
-      /* Custom title with gradient */
+      /* ==================== TITLE & HEADERS ==================== */
       .main-title {
         background: linear-gradient(135deg, #0ea5e9, #3b82f6, #8b5cf6);
         -webkit-background-clip: text;
@@ -43,147 +42,26 @@ def inject_beautiful_css():
         font-weight: 700;
         margin: 0.5rem 0 2rem 0;
         letter-spacing: -0.02em;
-      }
-      
-      /* Card styles */
-      .metric-card {
-        background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-        border: 1px solid #e2e8f0;
-        border-radius: 16px;
-        padding: 1.5rem;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
-        backdrop-filter: blur(10px);
-        transition: all 0.3s ease;
         position: relative;
-        overflow: hidden;
       }
       
-      .metric-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 20px 40px -5px rgba(0, 0, 0, 0.15);
-        border-color: #cbd5e1;
-      }
-      
-      .metric-card::before {
+      .main-title::after {
         content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
+        display: block;
+        width: 100px;
         height: 3px;
         background: linear-gradient(90deg, #0ea5e9, #3b82f6, #8b5cf6);
-        border-radius: 16px 16px 0 0;
+        margin: 1rem auto;
+        border-radius: 2px;
+        animation: shimmer 2s infinite;
       }
       
-      .metric-value {
-        font-size: 2.5rem;
-        font-weight: 700;
-        margin: 0.5rem 0;
-        background: linear-gradient(135deg, #0ea5e9, #3b82f6);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+      @keyframes shimmer {
+        0% { opacity: 0.7; }
+        50% { opacity: 1; }
+        100% { opacity: 0.7; }
       }
       
-      .metric-label {
-        font-size: 0.875rem;
-        font-weight: 500;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-      }
-      
-      /* Filter panel */
-      .filter-panel {
-        background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-        border: 1px solid #e2e8f0;
-        border-radius: 16px;
-        padding: 1.5rem;
-        margin-bottom: 2rem;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-      }
-      
-      .filter-title {
-        font-size: 1.125rem;
-        font-weight: 600;
-        color: #1e293b;
-        margin-bottom: 1rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-      }
-      
-      /* Enhanced sidebar */
-      .css-1d391kg { 
-        background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%) !important; 
-        border-right: 1px solid #e2e8f0;
-      }
-      .stSidebar .stMarkdown h2, .stSidebar .stMarkdown h3 {
-        color: #1e293b !important;
-        font-weight: 600;
-      }
-      
-      /* Buttons */
-      .stButton > button, .stDownloadButton > button {
-        background: linear-gradient(135deg, #0ea5e9, #0284c7) !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 12px !important;
-        padding: 0.75rem 1.5rem !important;
-        font-weight: 600 !important;
-        font-size: 0.875rem !important;
-        transition: all 0.3s ease !important;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        box-shadow: 0 4px 12px rgba(14, 165, 233, 0.2);
-      }
-      
-      .stButton > button:hover, .stDownloadButton > button:hover {
-        background: linear-gradient(135deg, #0284c7, #0369a1) !important;
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(14, 165, 233, 0.3);
-      }
-      
-      /* Tabs */
-      .stTabs [data-baseweb="tab-list"] {
-        background: #ffffff;
-        border-radius: 12px;
-        padding: 0.25rem;
-        gap: 0.25rem;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-        border: 1px solid #e2e8f0;
-      }
-      
-      .stTabs [data-baseweb="tab"] {
-        background: transparent;
-        border-radius: 8px;
-        color: #64748b;
-        font-weight: 500;
-        transition: all 0.3s ease;
-        border: none;
-      }
-      
-      .stTabs [data-baseweb="tab"]:hover {
-        background: #f1f5f9;
-        color: #1e293b;
-      }
-      
-      .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #0ea5e9, #0284c7) !important;
-        color: white !important;
-        box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
-      }
-      
-      /* Data tables */
-      .stDataFrame {
-        background: #ffffff;
-        border-radius: 12px;
-        overflow: hidden;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-      }
-      
-      /* Section headers */
       .section-header {
         font-size: 1.5rem;
         font-weight: 600;
@@ -191,43 +69,20 @@ def inject_beautiful_css():
         margin: 2rem 0 1rem 0;
         padding-bottom: 0.5rem;
         border-bottom: 2px solid #e2e8f0;
+        position: relative;
       }
       
-      /* Info cards */
-      .info-card {
-        background: linear-gradient(135deg, #fef3c7, #fbbf24);
-        border: 1px solid #f59e0b;
-        border-radius: 12px;
-        padding: 1rem;
-        color: #92400e;
-        text-align: center;
-        font-weight: 500;
-        box-shadow: 0 2px 4px rgba(245, 158, 11, 0.1);
+      .section-header::before {
+        content: '';
+        position: absolute;
+        bottom: -2px;
+        left: 0;
+        width: 60px;
+        height: 2px;
+        background: linear-gradient(90deg, #0ea5e9, #3b82f6);
       }
       
-      /* Chart containers */
-      .chart-container {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 16px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-      }
-      
-      /* Custom selectbox and input styling */
-      .stSelectbox label, .stMultiSelect label, .stTextInput label {
-        color: #1e293b !important;
-        font-weight: 500 !important;
-      }
-      
-      .stSelectbox > div > div, .stMultiSelect > div > div, .stTextInput > div > div > input {
-        background: #ffffff !important;
-        border: 1px solid #e2e8f0 !important;
-        border-radius: 8px !important;
-      }
-      
-      /* Metrics styling for built-in st.metric */
+      /* ==================== METRIC CARDS ==================== */
       [data-testid="metric-container"] {
         background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
         border: 1px solid #e2e8f0;
@@ -236,6 +91,12 @@ def inject_beautiful_css():
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         position: relative;
         overflow: hidden;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      
+      [data-testid="metric-container"]:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 25px -5px rgba(0, 0, 0, 0.15);
       }
       
       [data-testid="metric-container"]::before {
@@ -265,34 +126,394 @@ def inject_beautiful_css():
         letter-spacing: 0.05em;
       }
       
-      /* Success/error message styling */
-      .stSuccess, .stError, .stWarning, .stInfo {
-        border-radius: 8px !important;
+      /* ==================== FILTER PANEL ==================== */
+      .filter-panel {
+        background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        position: relative;
+        overflow: hidden;
+      }
+      
+      .filter-panel::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, #0ea5e9, #3b82f6, #8b5cf6);
+      }
+      
+      .filter-title {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: #1e293b;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      
+      /* ==================== SIDEBAR STYLING ==================== */
+      .css-1d391kg {
+        background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%) !important;
+        border-right: 1px solid #e2e8f0;
+      }
+      
+      .stSidebar .stMarkdown h2,
+      .stSidebar .stMarkdown h3 {
+        color: #1e293b !important;
+        font-weight: 600;
+      }
+      
+      .stSidebar .stMarkdown h2::after,
+      .stSidebar .stMarkdown h3::after {
+        content: '';
+        display: block;
+        width: 40px;
+        height: 2px;
+        background: linear-gradient(90deg, #0ea5e9, #3b82f6);
+        margin-top: 0.5rem;
+      }
+      
+      /* ==================== BUTTONS ==================== */
+      .stButton > button,
+      .stDownloadButton > button {
+        background: linear-gradient(135deg, #0ea5e9, #0284c7) !important;
+        color: white !important;
         border: none !important;
+        border-radius: 12px !important;
+        padding: 0.75rem 1.5rem !important;
+        font-weight: 600 !important;
+        font-size: 0.875rem !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        box-shadow: 0 4px 12px rgba(14, 165, 233, 0.2);
+        position: relative;
+        overflow: hidden;
+      }
+      
+      .stButton > button:hover,
+      .stDownloadButton > button:hover {
+        background: linear-gradient(135deg, #0284c7, #0369a1) !important;
+        transform: translateY(-2px) scale(1.05);
+        box-shadow: 0 12px 25px rgba(14, 165, 233, 0.4);
+      }
+      
+      .stButton > button:active,
+      .stDownloadButton > button:active {
+        transform: translateY(0) scale(0.98);
+        transition: all 0.1s ease;
+      }
+      
+      /* ==================== TABS ==================== */
+      .stTabs [data-baseweb="tab-list"] {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 0.25rem;
+        gap: 0.25rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e2e8f0;
+      }
+      
+      .stTabs [data-baseweb="tab"] {
+        background: transparent;
+        border-radius: 8px;
+        color: #64748b;
+        font-weight: 500;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        border: none;
+        position: relative;
+        overflow: hidden;
+      }
+      
+      .stTabs [data-baseweb="tab"]:hover {
+        background: #f1f5f9;
+        color: #1e293b;
+        transform: translateY(-1px);
+      }
+      
+      .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #0ea5e9, #0284c7) !important;
+        color: white !important;
+        box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+        transform: translateY(-1px);
+      }
+      
+      /* ==================== DATA TABLES ==================== */
+      .stDataFrame {
+        background: #ffffff;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        transition: all 0.3s ease;
+      }
+      
+      .stDataFrame:hover {
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+      }
+      
+      /* ==================== CHART CONTAINERS ==================== */
+      .chart-container {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+      }
+      
+      .chart-container:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 25px -5px rgba(0, 0, 0, 0.15);
+      }
+      
+      .chart-container::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, #0ea5e9, #3b82f6, #8b5cf6);
+      }
+      
+      /* ==================== FORM ELEMENTS ==================== */
+      .stSelectbox label,
+      .stMultiSelect label,
+      .stTextInput label,
+      .stSlider label {
+        color: #1e293b !important;
+        font-weight: 500 !important;
+        margin-bottom: 0.5rem !important;
+      }
+      
+      .stSelectbox > div > div,
+      .stMultiSelect > div > div,
+      .stTextInput > div > div > input {
+        background: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 8px !important;
+        transition: all 0.3s ease !important;
+      }
+      
+      .stSelectbox > div > div:hover,
+      .stMultiSelect > div > div:hover,
+      .stTextInput > div > div > input:hover {
+        border-color: #0ea5e9 !important;
+        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1) !important;
+      }
+      
+      .stSelectbox > div > div:focus-within,
+      .stMultiSelect > div > div:focus-within,
+      .stTextInput > div > div > input:focus {
+        border-color: #0ea5e9 !important;
+        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2) !important;
       }
       
       /* Slider styling */
       .stSlider > div > div > div > div {
-        background: #0ea5e9 !important;
+        background: linear-gradient(90deg, #0ea5e9, #0284c7) !important;
       }
       
-      /* Enhanced hover effects */
-      .metric-card:hover, .chart-container:hover {
-        transform: translateY(-2px);
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      .stSlider > div > div > div > div > div {
+        background: #ffffff !important;
+        border: 2px solid #0ea5e9 !important;
+        box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3) !important;
       }
       
-      /* Subtle animations */
+      /* ==================== INFO CARDS ==================== */
+      .info-card {
+        background: linear-gradient(135deg, #fef3c7, #fbbf24);
+        border: 1px solid #f59e0b;
+        border-radius: 12px;
+        padding: 1rem;
+        color: #92400e;
+        text-align: center;
+        font-weight: 500;
+        box-shadow: 0 2px 4px rgba(245, 158, 11, 0.1);
+        position: relative;
+        overflow: hidden;
+      }
+      
+      .info-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, #f59e0b, #d97706);
+      }
+      
+      /* ==================== SUCCESS/ERROR MESSAGES ==================== */
+      .stSuccess,
+      .stError,
+      .stWarning,
+      .stInfo {
+        border-radius: 12px !important;
+        border: none !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+        animation: slideIn 0.3s ease-out !important;
+      }
+      
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateX(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+      
+      /* ==================== ANIMATIONS ==================== */
       @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
       }
       
-      .stDataFrame, .metric-card, .chart-container {
-        animation: fadeIn 0.5s ease-out;
+      .stDataFrame,
+      [data-testid="metric-container"],
+      .chart-container {
+        animation: fadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      
+      /* Stagger animations for multiple elements */
+      .stDataFrame:nth-child(1) { animation-delay: 0.1s; }
+      .stDataFrame:nth-child(2) { animation-delay: 0.2s; }
+      .stDataFrame:nth-child(3) { animation-delay: 0.3s; }
+      
+      /* ==================== LOADING STATES ==================== */
+      .loading-spinner {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 2px solid #e2e8f0;
+        border-radius: 50%;
+        border-top-color: #0ea5e9;
+        animation: spin 1s linear infinite;
+      }
+      
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      
+      /* ==================== RESPONSIVE DESIGN ==================== */
+      @media (max-width: 768px) {
+        .block-container {
+          max-width: 100vw;
+          width: 100vw;
+          padding-left: 0.5rem;
+          padding-right: 0.5rem;
+        }
+        
+        .main-title {
+          font-size: clamp(20px, 6vw, 32px);
+        }
+        
+        [data-testid="metric-container"] {
+          padding: 1rem;
+        }
+        
+        .filter-panel {
+          padding: 1rem;
+        }
+        
+        .chart-container {
+          padding: 1rem;
+        }
+      }
+      
+      @media (max-width: 480px) {
+        .section-header {
+          font-size: 1.25rem;
+        }
+        
+        .stTabs [data-baseweb="tab"] {
+          font-size: 0.875rem;
+          padding: 0.5rem;
+        }
+      }
+      
+      /* ==================== ACCESSIBILITY ==================== */
+      button:focus,
+      select:focus,
+      input:focus {
+        outline: 2px solid #0ea5e9 !important;
+        outline-offset: 2px !important;
+      }
+      
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+      
+      /* ==================== EXPANDER STYLING ==================== */
+      .streamlit-expanderHeader {
+        background: linear-gradient(135deg, #f8fafc, #f1f5f9) !important;
+        border-radius: 8px !important;
+        border: 1px solid #e2e8f0 !important;
+      }
+      
+      .streamlit-expanderContent {
+        background: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+        border-top: none !important;
+        border-radius: 0 0 8px 8px !important;
       }
     </style>
     """, unsafe_allow_html=True)
+
+    # Configure Altair theme
+    alt.themes.register("beautiful_soccer", lambda: {
+        "config": {
+            "view": {"stroke": "transparent"},
+            "background": "transparent",
+            "title": {"font": "Inter", "fontSize": 16, "color": "#1e293b", "anchor": "start"},
+            "axis": {
+                "labelColor": "#64748b",
+                "titleColor": "#1e293b",
+                "gridColor": "#e2e8f0",
+                "domainColor": "#cbd5e1",
+                "tickColor": "#cbd5e1",
+                "labelFont": "Inter",
+                "titleFont": "Inter"
+            },
+            "legend": {
+                "labelColor": "#64748b",
+                "titleColor": "#1e293b",
+                "labelFont": "Inter",
+                "titleFont": "Inter"
+            },
+            "range": {
+                "category": ["#0ea5e9", "#3b82f6", "#8b5cf6", "#10b981", "#f59e0b", "#ef4444"],
+                "heatmap": ["#f8fafc", "#0ea5e9"]
+            }
+        }
+    })
+    alt.themes.enable("beautiful_soccer")
 
 # ========================= XLSX fallback (no openpyxl) ========================
 def _parse_xlsx_without_openpyxl(file_bytes: bytes) -> pd.DataFrame:
@@ -499,9 +720,9 @@ def create_filter_panel(full_df: pd.DataFrame):
     return div_sel, team_sel, player_query, data_div
 
 def create_altair_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title: str, color_col=None):
-    """Create a beautiful Altair bar chart with light theme"""
+    """Create a beautiful Altair bar chart"""
     base = alt.Chart(df).add_selection(
-        alt.selection_single()
+        alt.selection_single(on='mouseover', empty='all')
     )
     
     if color_col:
@@ -511,10 +732,20 @@ def create_altair_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title: str
             stroke='white',
             strokeWidth=1
         ).encode(
-            x=alt.X(f'{x_col}:Q', title=x_col.replace('_', ' ').title(), axis=alt.Axis(format='d', tickMinStep=1)),
-            y=alt.Y(f'{y_col}:N', sort='-x', title=y_col.replace('_', ' ').title()),
-            color=alt.Color(f'{color_col}:N', scale=alt.Scale(range=['#0ea5e9', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'])),
-            tooltip=[y_col, x_col, color_col] if color_col else [y_col, x_col]
+            x=alt.X(f'{x_col}:Q', 
+                   title=x_col.replace('_', ' ').title(), 
+                   axis=alt.Axis(format='d', tickMinStep=1, labelAngle=0)),
+            y=alt.Y(f'{y_col}:N', 
+                   sort='-x', 
+                   title=y_col.replace('_', ' ').title(),
+                   axis=alt.Axis(labelLimit=100)),
+            color=alt.Color(f'{color_col}:N', 
+                           scale=alt.Scale(range=['#0ea5e9', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'])),
+            tooltip=[alt.Tooltip(y_col, title=y_col.replace('_', ' ').title()),
+                     alt.Tooltip(x_col, title=x_col.replace('_', ' ').title(), format='d'),
+                     alt.Tooltip(color_col, title=color_col.replace('_', ' ').title())] if color_col else 
+                    [alt.Tooltip(y_col, title=y_col.replace('_', ' ').title()),
+                     alt.Tooltip(x_col, title=x_col.replace('_', ' ').title(), format='d')]
         )
     else:
         chart = base.mark_bar(
@@ -524,24 +755,31 @@ def create_altair_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title: str
             stroke='white',
             strokeWidth=1
         ).encode(
-            x=alt.X(f'{x_col}:Q', title=x_col.replace('_', ' ').title(), axis=alt.Axis(format='d', tickMinStep=1)),
-            y=alt.Y(f'{y_col}:N', sort='-x', title=y_col.replace('_', ' ').title()),
-            tooltip=[y_col, x_col]
+            x=alt.X(f'{x_col}:Q', 
+                   title=x_col.replace('_', ' ').title(), 
+                   axis=alt.Axis(format='d', tickMinStep=1, labelAngle=0)),
+            y=alt.Y(f'{y_col}:N', 
+                   sort='-x', 
+                   title=y_col.replace('_', ' ').title(),
+                   axis=alt.Axis(labelLimit=100)),
+            tooltip=[alt.Tooltip(y_col, title=y_col.replace('_', ' ').title()),
+                     alt.Tooltip(x_col, title=x_col.replace('_', ' ').title(), format='d')]
         )
     
     return chart.properties(
         title=alt.TitleParams(text=title, fontSize=16, anchor='start', color='#1e293b'),
-        height=400
+        height=400,
+        width=600
     ).resolve_scale(
         color='independent'
     )
 
 def create_pie_chart(df: pd.DataFrame) -> alt.Chart:
-    """Create a beautiful Altair pie chart with light theme"""
+    """Create a beautiful Altair pie chart"""
     agg = df.groupby("Division")["Goals"].sum().reset_index()
     
     base = alt.Chart(agg).add_selection(
-        alt.selection_single()
+        alt.selection_single(on='mouseover', empty='all')
     )
     
     pie = base.mark_arc(
@@ -554,7 +792,8 @@ def create_pie_chart(df: pd.DataFrame) -> alt.Chart:
             scale=alt.Scale(range=['#0ea5e9', '#3b82f6', '#8b5cf6', '#10b981']),
             title='Division'
         ),
-        tooltip=['Division:N', 'Goals:Q']
+        tooltip=[alt.Tooltip('Division:N', title='Division'),
+                 alt.Tooltip('Goals:Q', title='Goals', format='d')]
     )
     
     text = base.mark_text(
@@ -592,9 +831,13 @@ def create_advanced_analytics_charts(df: pd.DataFrame):
         cornerRadiusTopLeft=2,
         cornerRadiusTopRight=2
     ).encode(
-        alt.X('Goals:Q', bin=alt.Bin(maxbins=20), title='Goals'),
+        alt.X('Goals:Q', 
+              bin=alt.Bin(maxbins=20), 
+              title='Goals',
+              axis=alt.Axis(format='d')),
         alt.Y('count():Q', title='Number of Players'),
-        tooltip=['Goals:Q', 'count():Q']
+        tooltip=[alt.Tooltip('Goals:Q', bin=True, title='Goals Range'),
+                 alt.Tooltip('count():Q', title='Players', format='d')]
     ).properties(
         title=alt.TitleParams(text='📊 Goals Distribution', fontSize=16, anchor='start', color='#1e293b'),
         width=400,
@@ -615,9 +858,16 @@ def create_advanced_analytics_charts(df: pd.DataFrame):
     ).encode(
         x=alt.X('Player_Count:Q', title='Number of Players'),
         y=alt.Y('Total_Goals:Q', title='Total Goals'),
-        size=alt.Size('Total_Goals:Q', scale=alt.Scale(range=[100, 500]), title='Total Goals'),
-        color=alt.Color('Total_Goals:Q', scale=alt.Scale(scheme='blues'), title='Total Goals'),
-        tooltip=['Team:N', 'Player_Count:Q', 'Total_Goals:Q']
+        size=alt.Size('Total_Goals:Q', 
+                     scale=alt.Scale(range=[100, 500]), 
+                     title='Total Goals',
+                     legend=None),
+        color=alt.Color('Total_Goals:Q', 
+                       scale=alt.Scale(scheme='blues'), 
+                       title='Total Goals'),
+        tooltip=[alt.Tooltip('Team:N', title='Team'),
+                 alt.Tooltip('Player_Count:Q', title='Players', format='d'),
+                 alt.Tooltip('Total_Goals:Q', title='Total Goals', format='d')]
     ).properties(
         title=alt.TitleParams(text='🎯 Team Performance: Players vs Goals', fontSize=16, anchor='start', color='#1e293b'),
         width=400,
@@ -655,7 +905,7 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded"
     )
-    inject_beautiful_css()
+    inject_complete_beautiful_css()
 
     # Beautiful gradient title
     st.markdown('<h1 class="main-title">⚽ ABEER BLUESTAR SOCCER FEST 2K25</h1>', unsafe_allow_html=True)
