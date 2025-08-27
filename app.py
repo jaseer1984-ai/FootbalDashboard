@@ -1,14 +1,14 @@
-# app.py — ABEER BLUESTAR SOCCER FEST 2K25 Dashboard
-# - Centered ALL-CAPS heading
-# - Clean light theme (subtle CSS + matching Altair theme)
+# app.py — ABEER BLUESTAR SOCCER FEST 2K25 Dashboard (fluid width)
+# - Centered ALL-CAPS heading (wraps, never clipped)
+# - Fluid/full-width layout (no narrow container)
 # - Hidden, hard-coded Google Sheets XLSX URL
-# - Refresh button with cache clear & "last refreshed" timestamp
+# - Refresh button with cache clear & timestamp
 # - Robust XLSX parsing (no openpyxl needed)
-# - Division, Team, Player (typed search + multiselect refine)
+# - Division, Team, Player filters + search
 # - Safe Top-N logic for 0 / 1 / 2+ players
 # - Integer axis ticks on charts (no decimals)
-# - Download reports (ZIP + individual CSVs, Top Scorers includes Team)
-# - Tables hide index/serial numbers and show integer Goals
+# - Downloads: CSVs + ZIP (Top Scorers includes Team)
+# - Tables hide index; Goals shown as integers
 
 import streamlit as st
 import pandas as pd
@@ -20,28 +20,41 @@ from io import BytesIO
 import requests
 from datetime import datetime
 
-# ---------------------- Minimal polished look --------------------------------
-def inject_clean_css():
+# ---------------------- FLUID LOOK & FEEL ------------------------------------
+def inject_fluid_css():
     st.markdown("""
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
       .stApp { font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-      .block-container { padding-top:.6rem; padding-bottom:2rem; max-width: 1150px; }
-      h1 { letter-spacing:.06em; font-weight:700; }
+      /* Make the main container fluid (no narrow max width) */
+      .block-container {
+        padding-top: .6rem; padding-bottom: 2rem;
+        max-width: 96vw; width: 96vw;   /* fluid */
+      }
+      @media (min-width: 1600px) {
+        .block-container { max-width: 1500px; width: 1500px; } /* large screens */
+      }
+      /* Big heading: centered, can wrap, never clip */
+      h1 {
+        text-align: center; margin: .2rem 0 .7rem 0;
+        letter-spacing: .06em; font-weight: 700; line-height: 1.15;
+        white-space: normal; overflow-wrap: anywhere; word-break: break-word;
+      }
       /* Buttons */
       .stButton > button, .stDownloadButton > button {
         background: #0ea5e9 !important; color:#fff !important; border:0 !important;
         border-radius:10px !important; padding:.45rem .9rem !important; font-weight:600 !important;
       }
       .stButton > button:hover, .stDownloadButton > button:hover { filter:brightness(1.06); }
+
       /* Dataframes */
       .stDataFrame table { border-radius: 10px; overflow: hidden; }
     </style>
     """, unsafe_allow_html=True)
 
-    # Altair theme to match (light, simple)
-    alt.themes.register("clean", lambda: {
+    # Simple matching Altair theme
+    alt.themes.register("fluid", lambda: {
         "config": {
             "view": {"stroke": "transparent"},
             "background": "transparent",
@@ -51,7 +64,7 @@ def inject_clean_css():
             "range": {"category": ["#0ea5e9","#34d399","#60a5fa","#f59e0b","#f87171","#a78bfa"]}
         }
     })
-    alt.themes.enable("clean")
+    alt.themes.enable("fluid")
 
 # ========================= XLSX fallback (no openpyxl) ========================
 def _parse_xlsx_without_openpyxl(file_bytes: bytes) -> pd.DataFrame:
@@ -113,7 +126,7 @@ def _read_excel_raw(file_like_or_bytes) -> pd.DataFrame:
     except ImportError:
         return _parse_xlsx_without_openpyxl(b)
 
-# ========================= Robust block parser ================================
+# ========================= Robust block parser =================================
 def _find_block_start_indices(raw: pd.DataFrame) -> tuple[int | None, int | None]:
     """Scan first two rows for 'B Division' and 'A Division' labels."""
     for row_idx in (0, 1):
@@ -176,7 +189,7 @@ def load_and_prepare_data_from_bytes(xlsx_bytes: bytes) -> pd.DataFrame:
     combined["Goals"] = combined["Goals"].astype(int)
     return combined[["Division", "Team", "Player", "Goals"]]
 
-# ========================= Fetch helpers =====================================
+# ========================= Fetch helpers ======================================
 def fetch_xlsx_bytes_from_url(url: str) -> bytes:
     r = requests.get(url, timeout=30)
     r.raise_for_status()
@@ -184,7 +197,7 @@ def fetch_xlsx_bytes_from_url(url: str) -> bytes:
         raise ValueError("Downloaded file is empty.")
     return r.content
 
-# ========================= UI helpers ========================================
+# ========================= UI helpers =========================================
 def display_metrics(df: pd.DataFrame) -> None:
     total = int(df["Goals"].sum()) if not df.empty else 0
     players = df["Player"].nunique() if not df.empty else 0
@@ -197,7 +210,6 @@ def display_metrics(df: pd.DataFrame) -> None:
 def bar_chart(df: pd.DataFrame, category: str, value: str, title: str) -> alt.Chart:
     """Horizontal bar chart with INTEGER ticks (no decimals)."""
     max_val = int(df[value].max()) if not df.empty else 1
-    # Limit explicit ticks to 50 to avoid clutter when values are large
     tick_vals = list(range(0, max_val + 1)) if max_val <= 50 else None
     return (
         alt.Chart(df)
@@ -253,13 +265,11 @@ def make_reports_zip(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
 # ========================= App ===============================================
 def main():
     st.set_page_config(page_title="ABEER BLUESTAR SOCCER FEST 2K25", page_icon="⚽", layout="wide")
-    inject_clean_css()
+    inject_fluid_css()
 
-    # Heading
+    # Heading (wraps if needed)
     st.markdown(
-        "<h1 style='text-align:center; margin-top:0; margin-bottom:0.25rem;'>"
-        "ABEER BLUESTAR SOCCER FEST 2K25"
-        "</h1>",
+        "<h1>ABEER BLUESTAR SOCCER FEST 2K25</h1>",
         unsafe_allow_html=True,
     )
 
@@ -341,7 +351,7 @@ def main():
     else:
         st.altair_chart(bar_chart(team_goals, "Team", "Goals", "Goals by Team"), use_container_width=True)
 
-    # Top Scorers (safe for 0/1/2+ players) with integer ticks
+    # Top Scorers (safe) with integer ticks
     st.subheader("Top Scorers")
     player_goals_total = (
         filtered.groupby("Player", as_index=False)["Goals"]
