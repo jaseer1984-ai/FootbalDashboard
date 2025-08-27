@@ -21,18 +21,6 @@ st.markdown("""
         border-radius: 10px;
         margin-bottom: 2rem;
     }
-    .metric-card {
-        background-color: #f0f2f6;
-        padding: 1rem;
-        border-radius: 10px;
-        border-left: 4px solid #1e3c72;
-    }
-    .stMetric {
-        background-color: #f8f9fa;
-        padding: 1rem;
-        border-radius: 8px;
-        border: 1px solid #e9ecef;
-    }
     div[data-testid="metric-container"] {
         background-color: #f8f9fa;
         border: 1px solid #dee2e6;
@@ -45,26 +33,17 @@ st.markdown("""
 
 @st.cache_data
 def load_data(uploaded_file=None):
-    """Load and process the Excel data"""
+    """Load and process the CSV data"""
     try:
         # Try to read from uploaded file first, then from local file
         if uploaded_file is not None:
-            # Try multiple engines for Excel reading
-            try:
-                df = pd.read_excel(uploaded_file, sheet_name='Sheet1', header=None, engine='openpyxl')
-            except Exception:
-                try:
-                    df = pd.read_excel(uploaded_file, sheet_name='Sheet1', header=None, engine='xlrd')
-                except Exception:
-                    df = pd.read_excel(uploaded_file, sheet_name='Sheet1', header=None)
+            df = pd.read_csv(uploaded_file, header=None)
         else:
             try:
-                df = pd.read_excel('Goal Score.xlsx', sheet_name='Sheet1', header=None, engine='openpyxl')
-            except Exception:
-                try:
-                    df = pd.read_excel('Goal Score.xlsx', sheet_name='Sheet1', header=None, engine='xlrd')
-                except Exception:
-                    df = pd.read_excel('Goal Score.xlsx', sheet_name='Sheet1', header=None)
+                df = pd.read_csv('goal_score_data.csv', header=None)
+            except FileNotFoundError:
+                # Fallback: try to read Excel if CSV doesn't exist
+                df = pd.read_excel('Goal Score.xlsx', sheet_name='Sheet1', header=None)
         
         all_data = []
         
@@ -95,11 +74,8 @@ def load_data(uploaded_file=None):
         processed_df = pd.DataFrame(all_data)
         return processed_df
     
-    except FileNotFoundError:
-        return pd.DataFrame(columns=['Division', 'Team', 'Player', 'Goals'])
     except Exception as e:
-        st.error(f"❌ Error reading Excel file: {str(e)}")
-        st.info("💡 Tip: Make sure your file is a valid .xlsx Excel file with the correct format.")
+        st.error(f"❌ Error reading data file: {str(e)}")
         return pd.DataFrame(columns=['Division', 'Team', 'Player', 'Goals'])
 
 def main():
@@ -114,9 +90,9 @@ def main():
     # File upload section
     st.subheader("📁 Data Source")
     uploaded_file = st.file_uploader(
-        "Upload your Goal Score.xlsx file", 
-        type=['xlsx'], 
-        help="Upload an Excel file with B Division (columns A,B,C) and A Division (columns F,G,H)"
+        "Upload your goal scoring data file", 
+        type=['csv', 'xlsx'], 
+        help="Upload a CSV or Excel file with B Division (columns A,B,C) and A Division (columns F,G,H)"
     )
     
     # Load data
@@ -124,24 +100,28 @@ def main():
     
     if df.empty:
         if uploaded_file is None:
-            st.info("📤 Please upload your Goal Score.xlsx file above, or ensure it's in the GitHub repository.")
-            st.write("**Expected Excel format:**")
+            st.info("📤 Please upload your data file above, or ensure it's in the GitHub repository.")
+            st.write("**Expected file format:**")
+            st.write("- **CSV**: goal_score_data.csv")
+            st.write("- **Excel**: Goal Score.xlsx")
             st.write("- Row 1: 'B Division' in column B, 'A Division' in column G")
             st.write("- Row 2: Headers (Team, Player Name, Nos. of Goals)")
             st.write("- Row 3+: Data")
             
-            # Show sample data structure
-            sample_data = pd.DataFrame({
-                'Division': ['B Division', 'B Division', 'A Division', 'A Division'],
-                'Team': ['Bluestar B', 'Newcastle FC', 'Blasters FC', 'Real Kerala'],
-                'Player': ['Alan Solaman', 'Muhammed Shuhaib', 'Muhammed Jiyad', 'Muhamed Ashik'],
-                'Goals': [2, 1, 2, 1]
-            })
-            st.write("**Sample data structure:**")
-            st.dataframe(sample_data, use_container_width=True)
+            # Conversion instructions
+            with st.expander("💡 How to Convert Excel to CSV"):
+                st.write("If you're having issues with Excel files, convert to CSV:")
+                st.code("""
+# Run this locally with your Excel file:
+import pandas as pd
+df = pd.read_excel('Goal Score.xlsx', sheet_name='Sheet1', header=None)
+df.to_csv('goal_score_data.csv', index=False, header=False)
+                """)
+                
+            return
         else:
             st.error("❌ Could not process the uploaded file. Please check the format.")
-        return
+            return
     
     # Show data loading success
     st.success(f"✅ Successfully loaded {len(df)} player records!")
@@ -161,10 +141,13 @@ def main():
     selected_team = st.sidebar.selectbox("Select Team:", teams)
     
     # Goal range filter
-    min_goals = st.sidebar.slider("Minimum Goals:", 
-                                  min_value=int(df['Goals'].min()), 
-                                  max_value=int(df['Goals'].max()), 
-                                  value=int(df['Goals'].min()))
+    if not df.empty:
+        min_goals = st.sidebar.slider("Minimum Goals:", 
+                                      min_value=int(df['Goals'].min()), 
+                                      max_value=int(df['Goals'].max()), 
+                                      value=int(df['Goals'].min()))
+    else:
+        min_goals = 1
     
     # Filter data based on selections
     filtered_df = df.copy()
@@ -193,26 +176,6 @@ def main():
         avg_goals = round(filtered_df['Goals'].mean(), 2) if len(filtered_df) > 0 else 0
         st.metric("📊 Avg Goals/Player", avg_goals)
     
-    # Additional metrics row
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        top_scorer_goals = filtered_df.groupby('Player')['Goals'].sum().max() if not filtered_df.empty else 0
-        st.metric("🏅 Highest Score", top_scorer_goals)
-    
-    with col2:
-        teams_with_goals = filtered_df.groupby('Team')['Goals'].sum()
-        top_team_goals = teams_with_goals.max() if not teams_with_goals.empty else 0
-        st.metric("🏆 Top Team Goals", top_team_goals)
-    
-    with col3:
-        multi_goal_players = len(filtered_df[filtered_df['Goals'] > 1]) if not filtered_df.empty else 0
-        st.metric("⭐ Multi-Goal Players", multi_goal_players)
-    
-    with col4:
-        total_records = len(filtered_df)
-        st.metric("📋 Total Records", total_records)
-    
     # Charts Row 1
     col1, col2 = st.columns(2)
     
@@ -222,16 +185,13 @@ def main():
             top_scorers = filtered_df.groupby('Player')['Goals'].sum().sort_values(ascending=False).head(10)
             
             if not top_scorers.empty:
-                # Create a DataFrame for better display
                 top_scorers_df = pd.DataFrame({
                     'Player': top_scorers.index,
                     'Goals': top_scorers.values
                 })
                 
-                # Display as bar chart using Streamlit's built-in chart
                 st.bar_chart(top_scorers_df.set_index('Player'))
                 
-                # Show top 5 in a nice format
                 st.write("**Top 5 Scorers:**")
                 for idx, (player, goals) in enumerate(top_scorers.head().items(), 1):
                     st.write(f"{idx}. **{player}**: {goals} goals")
@@ -244,16 +204,13 @@ def main():
             team_goals = filtered_df.groupby('Team')['Goals'].sum().sort_values(ascending=False)
             
             if not team_goals.empty:
-                # Create a DataFrame for better display
                 team_goals_df = pd.DataFrame({
                     'Team': team_goals.index,
                     'Goals': team_goals.values
                 })
                 
-                # Display as bar chart
                 st.bar_chart(team_goals_df.set_index('Team'))
                 
-                # Show breakdown with percentages
                 team_goals_df['Percentage'] = (team_goals_df['Goals'] / team_goals_df['Goals'].sum() * 100).round(1)
                 st.write("**Team Breakdown:**")
                 for _, row in team_goals_df.head().iterrows():
@@ -261,78 +218,11 @@ def main():
         else:
             st.info("No teams match the selected filters.")
     
-    # Charts Row 2
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("🆚 Division Comparison")
-        if len(df['Division'].unique()) > 1:
-            division_stats = df.groupby('Division').agg({
-                'Goals': ['sum', 'mean', 'count'],
-                'Player': 'nunique',
-                'Team': 'nunique'
-            }).round(2)
-            
-            division_stats.columns = ['Total Goals', 'Avg Goals', 'Total Records', 'Unique Players', 'Unique Teams']
-            
-            # Reset index to make Division a column
-            division_stats_display = division_stats.reset_index()
-            
-            # Display as styled table
-            st.dataframe(
-                division_stats_display.style.format({
-                    'Total Goals': '{:.0f}',
-                    'Avg Goals': '{:.2f}',
-                    'Total Records': '{:.0f}',
-                    'Unique Players': '{:.0f}',
-                    'Unique Teams': '{:.0f}'
-                }),
-                use_container_width=True
-            )
-            
-            # Show total goals by division as chart
-            total_goals_by_div = df.groupby('Division')['Goals'].sum()
-            st.bar_chart(total_goals_by_div)
-        else:
-            st.info("Need data from multiple divisions for comparison.")
-    
-    with col2:
-        st.subheader("📈 Goal Distribution")
-        
-        if not filtered_df.empty:
-            # Create histogram data
-            goal_counts = filtered_df['Goals'].value_counts().sort_index()
-            
-            # Display as bar chart
-            st.bar_chart(goal_counts)
-            
-            # Show statistics
-            st.write("**Distribution Statistics:**")
-            if not goal_counts.empty:
-                most_common_goals = goal_counts.index[0]
-                most_common_count = goal_counts.iloc[0]
-                st.write(f"• Most common score: **{most_common_goals}** goals ({most_common_count} players)")
-                st.write(f"• Highest score: **{filtered_df['Goals'].max()}** goals")
-                st.write(f"• Lowest score: **{filtered_df['Goals'].min()}** goals")
-                st.write(f"• Score range: **{filtered_df['Goals'].max() - filtered_df['Goals'].min()}** goals")
-        else:
-            st.info("No data available for the selected filters.")
-    
     # Data Table
     st.subheader("📋 Detailed Player Data")
     
-    # Search and sort controls
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        search_term = st.text_input("🔍 Search players or teams:", "")
-    with col2:
-        sort_by = st.selectbox("Sort by:", [
-            'Goals (Descending)', 
-            'Goals (Ascending)', 
-            'Player Name', 
-            'Team Name',
-            'Division'
-        ])
+    # Search functionality
+    search_term = st.text_input("🔍 Search players or teams:", "")
     
     # Apply search filter
     if search_term:
@@ -344,57 +234,24 @@ def main():
     else:
         display_df = filtered_df.copy()
     
-    # Apply sorting
-    if sort_by == 'Goals (Descending)':
-        display_df = display_df.sort_values('Goals', ascending=False)
-    elif sort_by == 'Goals (Ascending)':
-        display_df = display_df.sort_values('Goals', ascending=True)
-    elif sort_by == 'Player Name':
-        display_df = display_df.sort_values('Player')
-    elif sort_by == 'Team Name':
-        display_df = display_df.sort_values('Team')
-    else:  # Division
-        display_df = display_df.sort_values(['Division', 'Goals'], ascending=[True, False])
-    
-    # Display the dataframe with enhanced formatting
+    # Display the dataframe
     if not display_df.empty:
-        # Add rank column for goals
-        display_df_with_rank = display_df.copy()
-        display_df_with_rank['Goal Rank'] = display_df_with_rank['Goals'].rank(method='dense', ascending=False).astype(int)
+        display_df_sorted = display_df.sort_values('Goals', ascending=False)
+        display_df_sorted['Rank'] = display_df_sorted['Goals'].rank(method='dense', ascending=False).astype(int)
+        display_df_sorted = display_df_sorted[['Rank', 'Division', 'Team', 'Player', 'Goals']]
         
-        # Reorder columns
-        display_df_with_rank = display_df_with_rank[['Goal Rank', 'Division', 'Team', 'Player', 'Goals']]
+        st.dataframe(display_df_sorted.reset_index(drop=True), use_container_width=True)
         
-        # Color coding for top performers
-        def highlight_top_scorers(val):
-            if isinstance(val, (int, float)) and val >= 2:
-                return 'background-color: #d4edda; color: #155724; font-weight: bold'
-            return ''
-        
-        styled_df = display_df_with_rank.style.applymap(highlight_top_scorers, subset=['Goals'])
-        
-        st.dataframe(
-            styled_df,
-            use_container_width=True,
-            height=400
+        # Download button
+        csv = display_df_sorted.to_csv(index=False)
+        st.download_button(
+            label="📥 Download filtered data as CSV",
+            data=csv,
+            file_name="football_goals_filtered.csv",
+            mime="text/csv"
         )
-        
-        # Download button and summary
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            csv = display_df_with_rank.to_csv(index=False)
-            st.download_button(
-                label="📥 Download data as CSV",
-                data=csv,
-                file_name="football_goals_data.csv",
-                mime="text/csv"
-            )
-        
-        with col2:
-            st.info(f"Showing {len(display_df_with_rank)} of {len(df)} total records")
-            
     else:
-        st.warning("🔍 No data matches your search criteria. Try adjusting your filters.")
+        st.info("No data matches your search criteria.")
     
     # Summary Statistics
     st.subheader("📊 Summary Statistics")
@@ -408,15 +265,6 @@ def main():
             st.write(f"• **Highest individual score**: {df['Goals'].max()}")
             st.write(f"• **Total unique players**: {df['Player'].nunique()}")
             st.write(f"• **Total unique teams**: {df['Team'].nunique()}")
-            
-            # Top performer
-            top_player_data = df.groupby('Player')['Goals'].sum()
-            top_player = top_player_data.idxmax()
-            top_goals = top_player_data.max()
-            st.write(f"• **Top scorer**: {top_player} ({top_goals} goals)")
-            
-            # Most goals in single game
-            st.write(f"• **Highest single-game score**: {df['Goals'].max()}")
     
     with col2:
         st.write("**Division Breakdown:**")
@@ -429,12 +277,6 @@ def main():
                 st.write(f"  - Teams: **{div_data['Team'].nunique()}**")
                 if len(div_data) > 0:
                     st.write(f"  - Avg goals/player: **{div_data['Goals'].mean():.2f}**")
-                    
-                    # Top scorer in division
-                    div_top_data = div_data.groupby('Player')['Goals'].sum()
-                    div_top_player = div_top_data.idxmax()
-                    div_top_goals = div_top_data.max()
-                    st.write(f"  - Top scorer: **{div_top_player}** ({div_top_goals} goals)")
 
 if __name__ == "__main__":
     main()
