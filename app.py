@@ -1,7 +1,8 @@
-# app.py — ABEER BLUESTAR SOCCER FEST 2K25 Dashboard (fixed downloads + smaller heading)
-# - Full-width layout, wrapping H1 (smaller cap)
-# - "Full" CSV always ALL rows (ignores filters) vs "Filtered" CSV = current view
-# - Integer ticks on charts; robust XLSX parsing; refresh & filters; ZIP exports
+# ABEER BLUESTAR SOCCER FEST 2K25 — Streamlit Dashboard (with tabs)
+# Tabs: OVERVIEW, TEAMS (Teams List), PLAYERS (Players List), DOWNLOADS
+# - Integer ticks on charts / safe slider
+# - Full vs Filtered downloads (+ Teams/Players CSV)
+# - Robust XLSX parsing without openpyxl
 
 import streamlit as st
 import pandas as pd
@@ -268,7 +269,7 @@ def main():
     last_ref = st.session_state.get("last_refresh", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     st.sidebar.caption(f"Last refreshed: {last_ref}")
 
-    # Filters
+    # ===== Filters =====
     st.sidebar.header("Filters")
     div_opts = ["All"] + sorted(full_df["Division"].unique().tolist())
     div_sel = st.sidebar.selectbox("Division", div_opts)
@@ -293,76 +294,143 @@ def main():
     if players_pick:
         filtered = filtered[filtered["Player"].isin(players_pick)]
 
-    # Metrics
-    display_metrics(filtered)
+    # ===== Tabs =====
+    t_overview, t_teams, t_players, t_downloads = st.tabs(["OVERVIEW", "TEAMS", "PLAYERS", "DOWNLOADS"])
 
-    # Table
-    st.subheader("Goal Scoring Records")
-    if filtered.empty:
-        st.info("No records under current filters.")
-    else:
-        st.dataframe(
-            filtered.sort_values("Goals", ascending=False).reset_index(drop=True),
-            use_container_width=True, hide_index=True,
-            column_config={"Goals": st.column_config.NumberColumn("Goals", format="%d")},
+    # ---------------------- OVERVIEW ----------------------
+    with t_overview:
+        display_metrics(filtered)
+
+        st.subheader("Goal Scoring Records")
+        if filtered.empty:
+            st.info("No records under current filters.")
+        else:
+            st.dataframe(
+                filtered.sort_values("Goals", ascending=False).reset_index(drop=True),
+                use_container_width=True, hide_index=True,
+                column_config={"Goals": st.column_config.NumberColumn("Goals", format="%d")},
+            )
+
+        st.subheader("Goals by Team")
+        team_goals = (
+            filtered.groupby("Team", as_index=False)["Goals"].sum().sort_values("Goals", ascending=False)
         )
+        if team_goals.empty:
+            st.info("No team data to display for the current filters.")
+        else:
+            st.altair_chart(bar_chart(team_goals, "Team", "Goals", "Goals by Team"), use_container_width=True)
 
-    # Goals by Team (integer ticks)
-    st.subheader("Goals by Team")
-    team_goals = (
-        filtered.groupby("Team", as_index=False)["Goals"].sum().sort_values("Goals", ascending=False)
-    )
-    if team_goals.empty:
-        st.info("No team data to display for the current filters.")
-    else:
-        st.altair_chart(bar_chart(team_goals, "Team", "Goals", "Goals by Team"), use_container_width=True)
+        # Top Scorers table with Team + safe slider
+        st.subheader("Top Scorers")
+        scorers_pt = (
+            filtered.groupby(["Player", "Team"], as_index=False)["Goals"]
+            .sum()
+            .sort_values(["Goals", "Player"], ascending=[False, True])
+        )
+        max_rows = int(scorers_pt.shape[0])
+        if max_rows == 0:
+            st.info("No player data to display for the current filters.")
+        elif max_rows == 1:
+            st.caption("Only one scorer found — showing that row.")
+            single_df = scorers_pt.head(1).reset_index(drop=True)
+            st.dataframe(
+                single_df, use_container_width=True, hide_index=True,
+                column_config={"Goals": st.column_config.NumberColumn("Goals", format="%d")},
+            )
+            st.altair_chart(
+                bar_chart(single_df.groupby("Player", as_index=False)["Goals"].sum(),
+                          "Player", "Goals", "Top 1 Scorer by Goals"),
+                use_container_width=True,
+            )
+        else:
+            default_top = min(10, max_rows)
+            top_n = st.sidebar.slider("Top N players", 1, max_rows, int(default_top), key=f"topn_{max_rows}")
+            top_df = scorers_pt.head(int(top_n)).reset_index(drop=True)
+            st.dataframe(
+                top_df, use_container_width=True, hide_index=True,
+                column_config={"Goals": st.column_config.NumberColumn("Goals", format="%d")},
+            )
+            chart_df = top_df.groupby("Player", as_index=False)["Goals"].sum()
+            st.altair_chart(bar_chart(chart_df, "Player", "Goals", f"Top {int(top_n)} Scorers by Goals"),
+                            use_container_width=True)
 
-    # Top Scorers (integer ticks)
-    st.subheader("Top Scorers")
-    player_goals_total = (
-        filtered.groupby("Player", as_index=False)["Goals"].sum().sort_values("Goals", ascending=False)
-    )
-    max_players = int(player_goals_total.shape[0])
-    if max_players == 0:
-        st.info("No player data to display for the current filters.")
-    elif max_players == 1:
-        st.caption("Only one player found — showing that player.")
-        single_df = player_goals_total.head(1).reset_index(drop=True)
-        st.dataframe(single_df, use_container_width=True, hide_index=True,
-                     column_config={"Goals": st.column_config.NumberColumn("Goals", format="%d")})
-        st.altair_chart(bar_chart(single_df, "Player", "Goals", "Top 1 Player by Goals"), use_container_width=True)
-    else:
-        default_top = min(10, max_players)
-        top_n = st.sidebar.slider("Top N players", min_value=1, max_value=max_players, value=int(default_top),
-                                  key=f"topn_{max_players}")
-        top_df = player_goals_total.head(int(top_n)).reset_index(drop=True)
-        st.dataframe(top_df, use_container_width=True, hide_index=True,
-                     column_config={"Goals": st.column_config.NumberColumn("Goals", format="%d")})
-        st.altair_chart(bar_chart(top_df, "Player", "Goals", f"Top {int(top_n)} Players by Goals"),
-                        use_container_width=True)
+        if div_sel == "All" and not full_df.empty:
+            st.subheader("Goals Distribution by Division")
+            st.altair_chart(pie_chart(full_df), use_container_width=True)
 
-    # Downloads (FULL = ALL rows, ignores filters)
-    st.subheader("Download Reports")
-    st.caption("**Full** = all divisions, ignores filters. **Filtered** = current view.")
-    st.download_button("⬇️ Download FULL (ALL rows) CSV",
-        data=full_df.to_csv(index=False), file_name="records_full.csv", mime="text/csv")
-    st.download_button("⬇️ Download FILTERED (current view) CSV",
-        data=filtered.to_csv(index=False), file_name="records_filtered.csv", mime="text/csv")
+    # ---------------------- TEAMS (Teams List) ----------------------
+    with t_teams:
+        st.subheader("Teams List")
+        if filtered.empty:
+            st.info("No teams under current filters.")
+        else:
+            # Summary: Division(s), Team, Players, Total Goals, Top Scorer, Top Scorer Goals
+            team_div = (filtered.groupby("Team")["Division"]
+                        .agg(lambda s: ", ".join(sorted(s.astype(str).unique()))).reset_index())
+            team_summary = (filtered.groupby("Team", as_index=False)
+                            .agg(Total_Goals=("Goals","sum"), Players=("Player","nunique")))
+            top_by_team = (filtered.groupby(["Team","Player"], as_index=False)["Goals"].sum())
+            top_by_team = (top_by_team.sort_values(["Team","Goals"], ascending=[True,False])
+                           .groupby("Team").head(1)
+                           .rename(columns={"Player":"Top Scorer","Goals":"Top Scorer Goals"}))
 
-    top_scorers_with_team = (
-        filtered.groupby(["Player", "Team"], as_index=False)["Goals"]
-        .sum().sort_values(["Goals","Player"], ascending=[False, True])[["Player","Team","Goals"]]
-    )
-    st.download_button("⬇️ Download TOP SCORERS (with Team) CSV",
-        data=top_scorers_with_team.to_csv(index=False), file_name="top_scorers_filtered.csv", mime="text/csv")
+            teams_list = (team_div.merge(team_summary, on="Team", how="left")
+                                 .merge(top_by_team, on="Team", how="left")
+                          .sort_values(["Total_Goals","Team"], ascending=[False,True]))
+            teams_list = teams_list[["Division","Team","Players","Total_Goals","Top Scorer","Top Scorer Goals"]]
 
-    zip_bytes = make_reports_zip(full_df, filtered)
-    st.download_button("📦 Download ALL reports (ZIP)",
-        data=zip_bytes, file_name="football_reports.zip", mime="application/zip")
+            st.dataframe(
+                teams_list, use_container_width=True, hide_index=True,
+                column_config={
+                    "Total_Goals": st.column_config.NumberColumn("Total Goals", format="%d"),
+                    "Players": st.column_config.NumberColumn("Players", format="%d"),
+                    "Top Scorer Goals": st.column_config.NumberColumn("Top Scorer Goals", format="%d"),
+                },
+            )
 
-    if div_sel == "All" and not full_df.empty:
-        st.subheader("Goals Distribution by Division")
-        st.altair_chart(pie_chart(full_df), use_container_width=True)
+            st.altair_chart(bar_chart(teams_list.rename(columns={"Total_Goals":"Goals"}),
+                                      "Team", "Goals", "Team Totals (Goals)"),
+                            use_container_width=True)
+
+    # ---------------------- PLAYERS (Players List) ----------------------
+    with t_players:
+        st.subheader("Players List")
+        if filtered.empty:
+            st.info("No players under current filters.")
+        else:
+            players_list = (filtered.groupby(["Player","Team","Division"], as_index=False)["Goals"].sum()
+                            .sort_values(["Goals","Player"], ascending=[False,True]))
+            st.dataframe(
+                players_list, use_container_width=True, hide_index=True,
+                column_config={"Goals": st.column_config.NumberColumn("Goals", format="%d")},
+            )
+
+    # ---------------------- DOWNLOADS ----------------------
+    with t_downloads:
+        st.subheader("Download Reports")
+        st.caption("**Full** = all divisions, ignores filters. **Filtered** = current view.")
+
+        st.download_button("⬇️ Download FULL (ALL rows) CSV",
+            data=full_df.to_csv(index=False), file_name="records_full.csv", mime="text/csv")
+        st.download_button("⬇️ Download FILTERED (current view) CSV",
+            data=filtered.to_csv(index=False), file_name="records_filtered.csv", mime="text/csv")
+
+        # Extra downloads for new tabs
+        teams_list_dl = (filtered.groupby(["Team","Division"], as_index=False)
+                         .agg(Players=("Player","nunique"), Total_Goals=("Goals","sum"))
+                         .sort_values(["Total_Goals","Team"], ascending=[False,True]))
+        st.download_button("⬇️ Download TEAMS LIST (current view) CSV",
+            data=teams_list_dl.to_csv(index=False), file_name="teams_list_filtered.csv", mime="text/csv")
+
+        players_list_dl = (filtered.groupby(["Player","Team","Division"], as_index=False)["Goals"].sum()
+                           .sort_values(["Goals","Player"], ascending=[False,True]))
+        st.download_button("⬇️ Download PLAYERS LIST (current view) CSV",
+            data=players_list_dl.to_csv(index=False), file_name="players_list_filtered.csv", mime="text/csv")
+
+        # ZIP bundle (includes full/filtered + summaries)
+        zip_bytes = make_reports_zip(full_df, filtered)
+        st.download_button("📦 Download ALL reports (ZIP)",
+            data=zip_bytes, file_name="football_reports.zip", mime="application/zip")
 
 if __name__ == "__main__":
     main()
