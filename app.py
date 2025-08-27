@@ -4,9 +4,8 @@
 # - Robust XLSX parsing (no openpyxl needed)
 # - Division, Team, Player (typed search + multiselect refine)
 # - Safe Top-N logic for 0 / 1 / 2+ players
-# - Download reports (ZIP of CSVs + individual CSV buttons)
+# - Download reports (ZIP + individual CSVs)
 # - Tables hide index/serial numbers
-
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -193,18 +192,18 @@ def pie_chart(df: pd.DataFrame) -> alt.Chart:
     )
 
 def make_reports_zip(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
-    """Create a ZIP with CSVs for full and filtered views and summaries."""
+    """Create a ZIP with CSVs for full and filtered views and summaries (Top Scorers includes Team)."""
     team_goals = (
-        filtered_df.groupby("Team")["Goals"]
+        filtered_df.groupby("Team", as_index=False)["Goals"]
         .sum()
-        .reset_index()
         .sort_values("Goals", ascending=False)
     )
+    # >>> UPDATED: include Team in top-scorers summary
     top_scorers = (
-        filtered_df.groupby("Player")["Goals"]
+        filtered_df.groupby(["Player", "Team"], as_index=False)["Goals"]
         .sum()
-        .reset_index()
-        .sort_values("Goals", ascending=False)
+        .sort_values(["Goals", "Player"], ascending=[False, True])
+        [["Player", "Team", "Goals"]]
     )
     buf = BytesIO()
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as z:
@@ -293,9 +292,8 @@ def main():
     # ====== Goals by Team ======
     st.subheader("Goals by Team")
     team_goals = (
-        filtered.groupby("Team")["Goals"]
+        filtered.groupby("Team", as_index=False)["Goals"]
         .sum()
-        .reset_index()
         .sort_values("Goals", ascending=False)
     )
     if team_goals.empty:
@@ -305,18 +303,19 @@ def main():
 
     # ====== Top Scorers (0/1/2+ safe) ======
     st.subheader("Top Scorers")
-    player_goals = (
-        filtered.groupby("Player")["Goals"]
+    # For chart/slider: aggregate by Player only
+    player_goals_total = (
+        filtered.groupby("Player", as_index=False)["Goals"]
         .sum()
-        .reset_index()
         .sort_values("Goals", ascending=False)
     )
-    max_players = int(player_goals.shape[0])
+    max_players = int(player_goals_total.shape[0])
+
     if max_players == 0:
         st.info("No player data to display for the current filters.")
     elif max_players == 1:
         st.caption("Only one player found — showing that player.")
-        single_df = player_goals.head(1).reset_index(drop=True)
+        single_df = player_goals_total.head(1).reset_index(drop=True)
         st.dataframe(single_df, use_container_width=True, hide_index=True)
         st.altair_chart(
             bar_chart(single_df, "Player", "Goals", "Top 1 Player by Goals"),
@@ -331,7 +330,7 @@ def main():
             value=int(default_top),
             key=f"topn_{max_players}",
         )
-        top_df = player_goals.head(int(top_n)).reset_index(drop=True)
+        top_df = player_goals_total.head(int(top_n)).reset_index(drop=True)
         st.dataframe(top_df, use_container_width=True, hide_index=True)
         st.altair_chart(
             bar_chart(top_df, "Player", "Goals", f"Top {int(top_n)} Players by Goals"),
@@ -340,6 +339,7 @@ def main():
 
     # ====== Downloads ======
     st.subheader("Download Reports")
+    # Individual CSVs
     st.download_button(
         "⬇️ Download FULL records (CSV)",
         data=data.to_csv(index=False),
@@ -352,6 +352,20 @@ def main():
         file_name="records_filtered.csv",
         mime="text/csv",
     )
+    # NEW: top scorers with Team (convenience CSV)
+    top_scorers_with_team = (
+        filtered.groupby(["Player", "Team"], as_index=False)["Goals"]
+        .sum()
+        .sort_values(["Goals", "Player"], ascending=[False, True])
+        [["Player", "Team", "Goals"]]
+    )
+    st.download_button(
+        "⬇️ Download TOP SCORERS (with Team) CSV",
+        data=top_scorers_with_team.to_csv(index=False),
+        file_name="top_scorers_filtered.csv",
+        mime="text/csv",
+    )
+    # ZIP bundle (full + filtered + summaries)
     zip_bytes = make_reports_zip(data, filtered)
     st.download_button(
         "📦 Download ALL reports (ZIP)",
