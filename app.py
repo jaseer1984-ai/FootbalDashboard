@@ -11,6 +11,10 @@ from io import BytesIO
 # XLSX fallback parser (no openpyxl)
 # -----------------------------
 def _parse_xlsx_without_openpyxl(file_bytes: bytes) -> pd.DataFrame:
+    """
+    Read the first worksheet from an .xlsx file using only the standard library.
+    Returns a DataFrame with columns labelled by Excel column letters (A, B, …).
+    """
     ns = {'main': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
     with zipfile.ZipFile(BytesIO(file_bytes)) as z:
         # shared strings
@@ -55,7 +59,12 @@ def _parse_xlsx_without_openpyxl(file_bytes: bytes) -> pd.DataFrame:
 # Data loading (pandas first, fallback if ImportError)
 # -----------------------------
 def _read_excel_safely(file_like_or_path) -> pd.DataFrame:
-    # Get bytes for fallback in case openpyxl is missing
+    """
+    Try pandas.read_excel first (uses openpyxl if available).
+    If ImportError (openpyxl missing), use the built-in XLSX fallback.
+    file_like_or_path can be a Path/str or a Streamlit UploadedFile.
+    """
+    # Capture bytes for fallback (and rewind UploadedFile after reading)
     if isinstance(file_like_or_path, (str, Path)):
         p = Path(file_like_or_path)
         with open(p, 'rb') as fh:
@@ -72,6 +81,11 @@ def _read_excel_safely(file_like_or_path) -> pd.DataFrame:
         return _parse_xlsx_without_openpyxl(file_bytes)
 
 def load_and_prepare_data(file_like_or_path) -> pd.DataFrame:
+    """
+    Load the sheet and reshape to tidy long format with:
+      Division | Team | Player | Goals
+    The sheet has 2 side-by-side tables: left (B Division) and right (A Division).
+    """
     raw_df = _read_excel_safely(file_like_or_path)
 
     # Case 1: pandas with named columns
@@ -214,7 +228,10 @@ def main() -> None:
     if team_goals.empty:
         st.info("No team data to display for the current filters.")
     else:
-        st.altair_chart(bar_chart(team_goals, "Team", "Goals", "Goals by Team"), use_container_width=True)
+        st.altair_chart(
+            bar_chart(team_goals, "Team", "Goals", "Goals by Team"),
+            use_container_width=True,
+        )
 
     # ===== Top Scorers =====
     st.subheader("Top Scorers")
@@ -224,12 +241,12 @@ def main() -> None:
         .reset_index()
         .sort_values(by="Goals", ascending=False)
     )
-    max_players = player_goals.shape[0]
-    if max_players == 0:
-        st.info("No player data to display for the current filters.")
+    max_players = int(player_goals.shape[0])
+    if max_players <= 0:
+        st.info("No player data to display for the current filters (try clearing the Team filter).")
     else:
         default_top = min(10, max_players)
-        top_n = st.sidebar.slider("Top N players", 1, max_players, default_top)
+        top_n = st.sidebar.slider("Top N players", min_value=1, max_value=max_players, value=default_top)
         st.altair_chart(
             bar_chart(player_goals.head(top_n), "Player", "Goals", f"Top {top_n} Players by Goals"),
             use_container_width=True,
