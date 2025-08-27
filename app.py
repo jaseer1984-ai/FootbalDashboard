@@ -1,134 +1,145 @@
-"""
-Football Goals Dashboard
-=======================
-
-This Streamlit application provides an interactive dashboard to explore goal‑
-scoring statistics for two football divisions (A and B) using the provided
-Excel file ``Goal Score.xlsx``.
-"""
-
+# app.py — Football Goals Dashboard (resilient file handling + XLSX fallback)
 import streamlit as st
 import pandas as pd
 import altair as alt
 from pathlib import Path
 import zipfile
 import xml.etree.ElementTree as ET
-from io import BytesIO
+from io import BytesIO, BufferedReader, IOBase
 
-def load_and_prepare_data(excel_path: Path) -> pd.DataFrame:
+# -----------------------------
+# XLSX fallback parser (no openpyxl)
+# -----------------------------
+def _parse_xlsx_without_openpyxl(file_bytes: bytes) -> pd.DataFrame:
     """
-    Load the Excel file and reshape it into a tidy DataFrame.
-
-    This function first attempts to read the file with pandas (which uses
-    openpyxl under the hood).  If openpyxl isn’t installed, a fallback parser
-    based on the standard library is used.  The worksheet contains two
-    side‑by‑side tables for B and A divisions; they are split, cleaned and
-    concatenated into a single DataFrame with columns Division, Team,
-    Player and Goals.
-    """
-    # Try pandas; fallback if openpyxl is missing
-    try:
-        raw_df = pd.read_excel(excel_path)
-    except ImportError:
-        raw_df = _parse_xlsx_without_openpyxl(excel_path)
-
-    # If columns are letters (from fallback), use row 1 as header
-    first_col = list(raw_df.columns)[0]
-    if first_col in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]:
-        if len(raw_df) < 3:
-            return pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
-        header = raw_df.iloc[1].values
-        data_rows = raw_df.iloc[2:].reset_index(drop=True)
-        data_rows.columns = header
-        b_df = data_rows.iloc[:, :3].copy()
-        b_df.columns = ["Team", "Player", "Goals"]
-        b_df["Division"] = "B Division"
-        a_df = data_rows.iloc[:, 3:].copy()
-        a_df.columns = ["Team", "Player", "Goals"]
-        a_df["Division"] = "A Division"
-        combined_df = pd.concat([b_df, a_df], ignore_index=True)
-    else:
-        b_df = raw_df[["B Division", "Unnamed: 1", "Unnamed: 2"]].copy()
-        b_df.columns = ["Team", "Player", "Goals"]
-        b_df["Division"] = "B Division"
-        a_df = raw_df[["A Division", "Unnamed: 6", "Unnamed: 7"]].copy()
-        a_df.columns = ["Team", "Player", "Goals"]
-        a_df["Division"] = "A Division"
-        combined_df = pd.concat([b_df, a_df], ignore_index=True)
-
-    # Clean and convert goals
-    combined_df = combined_df.dropna(subset=["Team", "Player", "Goals"])
-    combined_df["Goals"] = pd.to_numeric(combined_df["Goals"], errors="coerce")
-    combined_df = combined_df.dropna(subset=["Goals"])
-    combined_df["Goals"] = combined_df["Goals"].astype(int)
-    return combined_df
-
-def _parse_xlsx_without_openpyxl(file_obj: Path) -> pd.DataFrame:
-    """
-    Fallback parser for Excel .xlsx files using only built‑in modules.
-
-    It reads the first worksheet from a .xlsx archive and returns a
-    DataFrame with columns labelled by Excel column letters.
+    Read the first worksheet from an .xlsx file using only the standard library.
+    Returns a DataFrame with columns labelled by Excel column letters (A, B, …).
     """
     ns = {'main': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
-    # Read file into memory
-    with open(file_obj, 'rb') as f:
-        bytes_data = f.read()
 
-    with zipfile.ZipFile(BytesIO(bytes_data)) as z:
-        # Parse shared strings
+    with zipfile.ZipFile(BytesIO(file_bytes)) as z:
+        # shared strings
         shared_strings = []
         if 'xl/sharedStrings.xml' in z.namelist():
             with z.open('xl/sharedStrings.xml') as f:
-                tree = ET.parse(f)
-                root = tree.getroot()
+                root = ET.parse(f).getroot()
                 for si in root.findall('.//main:si', ns):
-                    text = ''.join([t.text for t in si.findall('.//main:t', ns) if t.text])
+                    text = ''.join(t.text or '' for t in si.findall('.//main:t', ns))
                     shared_strings.append(text)
 
-        # Parse the first worksheet
+        # first worksheet (sheet1.xml)
         with z.open('xl/worksheets/sheet1.xml') as f:
-            tree = ET.parse(f)
-            root = tree.getroot()
+            root = ET.parse(f).getroot()
             sheet_data = root.find('main:sheetData', ns)
             rows = []
             for row in sheet_data.findall('main:row', ns):
                 row_data = {}
                 for c in row.findall('main:c', ns):
-                    cell_ref = c.attrib['r']
-                    col = ''.join(ch for ch in cell_ref if ch.isalpha())
-                    cell_type = c.attrib.get('t')
+                    ref = c.attrib.get('r', 'A1')
+                    col_letters = ''.join(ch for ch in ref if ch.isalpha())
+                    t = c.attrib.get('t')
                     v = c.find('main:v', ns)
                     val = v.text if v is not None else None
-                    if cell_type == 's' and val is not None:
+                    if t == 's' and val is not None:  # shared string
                         idx = int(val)
-                        val = shared_strings[idx] if idx < len(shared_strings) else val
-                    row_data[col] = val
+                        if 0 <= idx < len(shared_strings):
+                            val = shared_strings[idx]
+                    row_data[col_letters] = val
                 rows.append(row_data)
 
-        # Build DataFrame
         if not rows:
             return pd.DataFrame()
-        col_letters = sorted({col for r in rows for col in r.keys()},
-                             key=lambda s: [ord(c) for c in s])
-        data = []
-        for r in rows:
-            data.append([r.get(col, None) for col in col_letters])
-        return pd.DataFrame(data, columns=col_letters)
 
+        # build rectangular table (A..H, etc.)
+        all_cols = sorted({c for r in rows for c in r.keys()},
+                          key=lambda s: [ord(ch) for ch in s])
+        data = [[r.get(c) for c in all_cols] for r in rows]
+        return pd.DataFrame(data, columns=all_cols)
+
+# -----------------------------
+# Data loading
+# -----------------------------
+def _read_excel_safely(file_like_or_path) -> pd.DataFrame:
+    """
+    Try pandas.read_excel first (uses openpyxl if available).
+    If ImportError (openpyxl missing), use the built-in XLSX fallback.
+    file_like_or_path can be a Path/str or a file-like object (e.g. Streamlit uploader).
+    """
+    # Get bytes for fallback when needed
+    file_bytes = None
+    if isinstance(file_like_or_path, (str, Path)):
+        p = Path(file_like_or_path)
+        with open(p, 'rb') as fh:
+            file_bytes = fh.read()
+    else:
+        # Streamlit's UploadedFile behaves like BytesIO
+        file_bytes = file_like_or_path.read()
+        file_like_or_path.seek(0)
+
+    try:
+        # If openpyxl installed, this works
+        return pd.read_excel(file_like_or_path)
+    except ImportError:
+        # Fallback without openpyxl
+        return _parse_xlsx_without_openpyxl(file_bytes)
+
+def load_and_prepare_data(file_like_or_path) -> pd.DataFrame:
+    """
+    Load the sheet and reshape to tidy long format with:
+      Division | Team | Player | Goals
+    The sheet has 2 side-by-side tables: left (B Division) and right (A Division).
+    """
+    raw_df = _read_excel_safely(file_like_or_path)
+
+    # Case 1: pandas with engine available → named columns exist
+    if "B Division" in raw_df.columns and "A Division" in raw_df.columns:
+        b_df = raw_df[["B Division", "Unnamed: 1", "Unnamed: 2"]].copy()
+        b_df.columns = ["Team", "Player", "Goals"]
+        b_df["Division"] = "B Division"
+
+        a_df = raw_df[["A Division", "Unnamed: 6", "Unnamed: 7"]].copy()
+        a_df.columns = ["Team", "Player", "Goals"]
+        a_df["Division"] = "A Division"
+
+    # Case 2: fallback parser → columns are letters; first row is section labels, second row is headers
+    else:
+        if len(raw_df) < 3:
+            return pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
+
+        # row 0 contains "B Division" / "A Division" labels; row 1 the headers; data from row 2
+        header = raw_df.iloc[1].tolist()
+        data_rows = raw_df.iloc[2:].reset_index(drop=True)
+        data_rows.columns = header
+
+        b_df = data_rows.iloc[:, :3].copy()
+        b_df.columns = ["Team", "Player", "Goals"]
+        b_df["Division"] = "B Division"
+
+        a_df = data_rows.iloc[:, 3:].copy()
+        a_df.columns = ["Team", "Player", "Goals"]
+        a_df["Division"] = "A Division"
+
+    combined = pd.concat([b_df, a_df], ignore_index=True)
+    combined = combined.dropna(subset=["Team", "Player", "Goals"])
+    combined["Goals"] = pd.to_numeric(combined["Goals"], errors="coerce")
+    combined = combined.dropna(subset=["Goals"])
+    combined["Goals"] = combined["Goals"].astype(int)
+    return combined
+
+# -----------------------------
+# Charts & metrics
+# -----------------------------
 def display_metrics(df: pd.DataFrame) -> None:
-    """Display high‑level summary metrics."""
-    total_goals = int(df["Goals"].sum())
-    num_players = df["Player"].nunique()
-    num_teams = df["Team"].nunique()
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Goals", f"{total_goals}")
-    col2.metric("Number of Players", f"{num_players}")
-    col3.metric("Number of Teams", f"{num_teams}")
+    total_goals = int(df["Goals"].sum()) if not df.empty else 0
+    num_players = df["Player"].nunique() if not df.empty else 0
+    num_teams = df["Team"].nunique() if not df.empty else 0
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Goals", f"{total_goals}")
+    c2.metric("Number of Players", f"{num_players}")
+    c3.metric("Number of Teams", f"{num_teams}")
 
 def bar_chart(df: pd.DataFrame, category: str, value: str, title: str) -> alt.Chart:
-    """Create a bar chart using Altair."""
-    chart = (
+    return (
         alt.Chart(df)
         .mark_bar()
         .encode(
@@ -138,10 +149,8 @@ def bar_chart(df: pd.DataFrame, category: str, value: str, title: str) -> alt.Ch
         )
         .properties(height=400, title=title)
     )
-    return chart
 
 def pie_chart(df: pd.DataFrame) -> alt.Chart:
-    """Create a donut chart showing goals contribution by division."""
     division_goals = df.groupby("Division")["Goals"].sum().reset_index()
     return (
         alt.Chart(division_goals)
@@ -154,8 +163,23 @@ def pie_chart(df: pd.DataFrame) -> alt.Chart:
         .properties(title="Goals by Division")
     )
 
+# -----------------------------
+# File finding helper
+# -----------------------------
+def _find_local_excel() -> Path | None:
+    candidates = [
+        Path("Goal Score.xlsx"),
+        Path(__file__).parent / "Goal Score.xlsx",
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
+
+# -----------------------------
+# Streamlit app
+# -----------------------------
 def main() -> None:
-    """Main function for the Streamlit app."""
     st.set_page_config(
         page_title="Football Goals Dashboard",
         page_icon="⚽",
@@ -163,53 +187,67 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
     st.title("Football Goals Dashboard")
-    st.write("Explore goal‑scoring statistics for A and B divisions.")
+    st.write("Explore goal-scoring statistics for A and B divisions.")
 
-    # Load and prepare data using fallback if necessary
-    excel_path = Path("Goal Score.xlsx")
-    data = load_and_prepare_data(excel_path)
+    st.sidebar.header("Data source")
+    uploaded = st.sidebar.file_uploader("Upload Goal Score.xlsx", type=["xlsx"])
 
-    # Sidebar filters
-    st.sidebar.header("Filters")
-    divisions = ["All"] + sorted(data["Division"].unique().tolist())
-    selected_division = st.sidebar.selectbox("Select Division", divisions)
-    if selected_division == "All":
-        filtered_data = data.copy()
+    if uploaded is not None:
+        df = load_and_prepare_data(uploaded)
     else:
-        filtered_data = data[data["Division"] == selected_division]
+        local_path = _find_local_excel()
+        if local_path is None:
+            st.warning(
+                "No Excel file found. Please upload **Goal Score.xlsx** using the sidebar."
+            )
+            st.stop()
+        df = load_and_prepare_data(local_path)
 
-    # Display metrics
-    display_metrics(filtered_data)
+    # Filters
+    st.sidebar.header("Filters")
+    divisions = ["All"] + sorted(df["Division"].unique().tolist())
+    chosen_div = st.sidebar.selectbox("Select Division", divisions)
+    filtered = df if chosen_div == "All" else df[df["Division"] == chosen_div]
 
-    # Data table
+    # Metrics
+    display_metrics(filtered)
+
+    # Table
     st.subheader("Goal Scoring Records")
-    st.dataframe(filtered_data.sort_values(by="Goals", ascending=False), use_container_width=True)
+    st.dataframe(
+        filtered.sort_values(by="Goals", ascending=False),
+        use_container_width=True,
+    )
 
     # Goals by team
     st.subheader("Goals by Team")
     team_goals = (
-        filtered_data.groupby("Team")["Goals"].sum().reset_index().sort_values(by="Goals", ascending=False)
+        filtered.groupby("Team")["Goals"]
+        .sum()
+        .reset_index()
+        .sort_values(by="Goals", ascending=False)
     )
     st.altair_chart(bar_chart(team_goals, "Team", "Goals", "Goals by Team"), use_container_width=True)
 
-    # Top scorers with adjustable top N
+    # Top scorers
     st.subheader("Top Scorers")
     player_goals = (
-        filtered_data.groupby("Player")["Goals"].sum().reset_index().sort_values(by="Goals", ascending=False)
+        filtered.groupby("Player")["Goals"]
+        .sum()
+        .reset_index()
+        .sort_values(by="Goals", ascending=False)
     )
-    max_players = player_goals.shape[0]
-    default_top = min(10, max_players)
-    top_n = st.sidebar.slider("Number of top players to display", 1, max_players, default_top)
-    top_players = player_goals.head(top_n)
+    max_players = player_goals.shape[0] or 1
+    top_n = st.sidebar.slider("Number of top players to display", 1, max_players, min(10, max_players))
     st.altair_chart(
-        bar_chart(top_players, "Player", "Goals", f"Top {top_n} Players by Goals"),
+        bar_chart(player_goals.head(top_n), "Player", "Goals", f"Top {top_n} Players by Goals"),
         use_container_width=True,
     )
 
-    # Division pie chart
-    if selected_division == "All":
+    # Division distribution
+    if chosen_div == "All":
         st.subheader("Goals Distribution by Division")
-        st.altair_chart(pie_chart(data), use_container_width=True)
+        st.altair_chart(pie_chart(df), use_container_width=True)
 
 if __name__ == "__main__":
     main()
