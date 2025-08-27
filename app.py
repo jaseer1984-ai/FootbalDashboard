@@ -49,9 +49,22 @@ def load_data(uploaded_file=None):
     try:
         # Try to read from uploaded file first, then from local file
         if uploaded_file is not None:
-            df = pd.read_excel(uploaded_file, sheet_name='Sheet1', header=None)
+            # Try multiple engines for Excel reading
+            try:
+                df = pd.read_excel(uploaded_file, sheet_name='Sheet1', header=None, engine='openpyxl')
+            except Exception:
+                try:
+                    df = pd.read_excel(uploaded_file, sheet_name='Sheet1', header=None, engine='xlrd')
+                except Exception:
+                    df = pd.read_excel(uploaded_file, sheet_name='Sheet1', header=None)
         else:
-            df = pd.read_excel('Goal Score.xlsx', sheet_name='Sheet1', header=None)
+            try:
+                df = pd.read_excel('Goal Score.xlsx', sheet_name='Sheet1', header=None, engine='openpyxl')
+            except Exception:
+                try:
+                    df = pd.read_excel('Goal Score.xlsx', sheet_name='Sheet1', header=None, engine='xlrd')
+                except Exception:
+                    df = pd.read_excel('Goal Score.xlsx', sheet_name='Sheet1', header=None)
         
         all_data = []
         
@@ -86,6 +99,7 @@ def load_data(uploaded_file=None):
         return pd.DataFrame(columns=['Division', 'Team', 'Player', 'Goals'])
     except Exception as e:
         st.error(f"❌ Error reading Excel file: {str(e)}")
+        st.info("💡 Tip: Make sure your file is a valid .xlsx Excel file with the correct format.")
         return pd.DataFrame(columns=['Division', 'Team', 'Player', 'Goals'])
 
 def main():
