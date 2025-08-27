@@ -1,14 +1,12 @@
-# app.py — ABEER BLUESTAR SOCCER FEST 2K25 (Enhanced Look)
+# app.py — ABEER BLUESTAR SOCCER FEST 2K25 Dashboard
 # - Centered ALL-CAPS heading
-# - Modern theme (Dark/Light toggle) with custom CSS
-# - Tabs: Overview / Teams / Players / Downloads
-# - Pretty metric cards with icons
+# - Hidden, hard-coded Google Sheets XLSX URL (no URL input shown)
+# - Refresh button with cache clear & "last refreshed" timestamp
 # - Robust XLSX parsing (no openpyxl needed)
-# - Division, Team, Player filters + search
-# - Safe Top-N handling
-# - Integer tick marks on charts (no decimals) + rounded bars
-# - Downloads: CSVs + ZIP (top scorers include Team)
-# - Tables hide index and align numbers
+# - Division, Team, Player (typed search + multiselect refine)
+# - Safe Top-N logic for 0 / 1 / 2+ players
+# - Download reports (ZIP + individual CSVs, Top Scorers includes Team)
+# - Tables hide index/serial numbers
 
 import streamlit as st
 import pandas as pd
@@ -20,122 +18,11 @@ from io import BytesIO
 import requests
 from datetime import datetime
 
-# ---------------------- LOOK & FEEL ------------------------------------------
-def inject_brand_css(theme: str = "Dark"):
-    """Inject polished CSS; theme is 'Dark' or 'Light'."""
-    if theme == "Light":
-        bg_grad = "linear-gradient(180deg,#f8fbff 0%,#f1f5ff 30%,#eef3ff 100%)"
-        text = "#0b1e35"
-        card = "rgba(10,34,67,0.04)"
-        border = "rgba(10,34,67,0.15)"
-        sidebar_bg = "rgba(10,34,67,0.03)"
-        grid = "#d8e3f6"
-        axis_label = "#3a4b66"
-        axis_title = "#274163"
-    else:  # Dark
-        bg_grad = "radial-gradient(1200px 600px at 10% -10%, #12315a 0%, #0e2a57 40%, #0b1e35 100%)"
-        text = "#eef2f6"
-        card = "rgba(255,255,255,0.06)"
-        border = "rgba(255,255,255,0.15)"
-        sidebar_bg = "rgba(255,255,255,0.03)"
-        grid = "#1f3b61"
-        axis_label = "#dbeafe"
-        axis_title = "#93c5fd"
-
-    st.markdown(f"""
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-      :root {{
-        --brand-primary:#0ea5e9;
-        --brand-accent:#22d3ee;
-        --brand-text:{text};
-        --brand-card:{card};
-        --brand-border:{border};
-        --sidebar-bg:{sidebar_bg};
-      }}
-      .stApp {{
-        background: {bg_grad} !important;
-        color: var(--brand-text);
-        font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      }}
-      .block-container {{ padding-top: .6rem; padding-bottom: 2rem; max-width: 1180px; }}
-      h1 {{ letter-spacing:.06em; font-weight:700; }}
-
-      /* Sidebar */
-      section[data-testid="stSidebar"] {{
-        background: var(--sidebar-bg);
-        border-right: 1px solid var(--brand-border);
-      }}
-
-      /* Tabs as pills */
-      [data-baseweb="tab-list"] {{ gap: 8px; }}
-      button[role="tab"] {{
-        background: var(--brand-card); border: 1px solid var(--brand-border);
-        border-radius: 12px; padding: .35rem .8rem; font-weight:600;
-      }}
-      button[role="tab"][aria-selected="true"] {{
-        background: linear-gradient(90deg, var(--brand-primary), var(--brand-accent));
-        color: #fff; border-color: transparent;
-      }}
-
-      /* Metric cards */
-      .metric-card {{
-        display:flex; align-items:center; gap:12px;
-        background: var(--brand-card); border: 1px solid var(--brand-border);
-        border-radius: 18px; padding: 16px 18px;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.08);
-      }}
-      .metric-icon {{
-        width:44px; height:44px; display:grid; place-items:center;
-        border-radius:12px; background: rgba(14,165,233,.15); color:#22d3ee; font-size:22px;
-      }}
-      .metric-value {{ font-size: 28px; font-weight: 700; line-height: 1; }}
-      .metric-label {{ font-size: 12px; opacity: .8; }}
-
-      /* Buttons & downloads */
-      .stButton > button, .stDownloadButton > button {{
-        background: linear-gradient(90deg, #0ea5e9, #22d3ee) !important;
-        color: white !important; border: 0 !important; border-radius: 12px !important;
-        padding: 0.55rem 1rem !important; font-weight: 600 !important;
-      }}
-      .stButton > button:hover, .stDownloadButton > button:hover {{ filter: brightness(1.06); }}
-
-      /* Dataframes */
-      .stDataFrame table {{ border-radius: 10px; overflow: hidden; }}
-      .stDataFrame tbody tr:nth-child(even) {{ background-color: rgba(255,255,255,0.03); }}
-    </style>
-    """, unsafe_allow_html=True)
-
-    # Altair theme (match CSS)
-    alt.themes.register("club", lambda: {
-        "config": {
-            "view": {"stroke": "transparent"},
-            "background": "transparent",
-            "title": {"font": "Poppins", "fontSize": 18, "color": text},
-            "axis":  {"labelColor": axis_label, "titleColor": axis_title, "gridColor": grid},
-            "legend":{"labelColor": axis_label, "titleColor": axis_title},
-            "range": {"category": ["#22d3ee","#60a5fa","#34d399","#f59e0b","#f87171","#a78bfa"]}
-        }
-    })
-    alt.themes.enable("club")
-
-def metric_card(label: str, value: str, icon: str):
-    st.markdown(
-        f"""
-        <div class="metric-card">
-          <div class="metric-icon">{icon}</div>
-          <div>
-            <div class="metric-value">{value}</div>
-            <div class="metric-label">{label}</div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-# ---------------------- XLSX FALLBACK (no openpyxl) --------------------------
+# =========================
+# XLSX fallback (no openpyxl)
+# =========================
 def _parse_xlsx_without_openpyxl(file_bytes: bytes) -> pd.DataFrame:
+    """Return first worksheet as raw grid (header=None)."""
     ns = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     with zipfile.ZipFile(BytesIO(file_bytes)) as z:
         shared = []
@@ -154,6 +41,7 @@ def _parse_xlsx_without_openpyxl(file_bytes: bytes) -> pd.DataFrame:
                 rdict = {}
                 for c in row.findall("main:c", ns):
                     ref = c.attrib.get("r", "A1")
+                    # letters -> 0-based index
                     col_letters = "".join(ch for ch in ref if ch.isalpha())
                     col_idx = 0
                     for ch in col_letters:
@@ -175,6 +63,7 @@ def _parse_xlsx_without_openpyxl(file_bytes: bytes) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 def _read_excel_raw(file_like_or_bytes) -> pd.DataFrame:
+    """Read Excel as raw grid (header=None). Tries pandas; falls back if engine missing."""
     if isinstance(file_like_or_bytes, (str, Path)):
         p = Path(file_like_or_bytes)
         with open(p, "rb") as fh:
@@ -192,8 +81,11 @@ def _read_excel_raw(file_like_or_bytes) -> pd.DataFrame:
     except ImportError:
         return _parse_xlsx_without_openpyxl(b)
 
-# ---------------------- ROBUST PARSER (sheet -> tidy) ------------------------
+# =========================
+# Robust block parser
+# =========================
 def _find_block_start_indices(raw: pd.DataFrame) -> tuple[int | None, int | None]:
+    """Scan first two rows for 'B Division' and 'A Division' labels."""
     for row_idx in (0, 1):
         if row_idx >= len(raw):
             continue
@@ -209,13 +101,17 @@ def _find_block_start_indices(raw: pd.DataFrame) -> tuple[int | None, int | None
     return None, None
 
 def load_and_prepare_data_from_bytes(xlsx_bytes: bytes) -> pd.DataFrame:
+    """Parse the dual-table sheet into tidy [Division, Team, Player, Goals]."""
     raw = _read_excel_raw(xlsx_bytes)
+
     b_start, a_start = _find_block_start_indices(raw)
     if b_start is None and a_start is None:
         b_start = 0
         a_start = 4 if raw.shape[1] >= 7 else 3 if raw.shape[1] >= 6 else None
+
     header_row = 1 if (len(raw) > 1) else 0
     data_start = header_row + 1
+
     frames = []
 
     def extract_block(start_col: int, division_name: str):
@@ -235,8 +131,10 @@ def load_and_prepare_data_from_bytes(xlsx_bytes: bytes) -> pd.DataFrame:
         temp["Division"] = division_name
         frames.append(temp)
 
-    if b_start is not None: extract_block(b_start, "B Division")
-    if a_start is not None: extract_block(a_start, "A Division")
+    if b_start is not None:
+        extract_block(b_start, "B Division")
+    if a_start is not None:
+        extract_block(a_start, "A Division")
 
     if not frames:
         return pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
@@ -248,7 +146,9 @@ def load_and_prepare_data_from_bytes(xlsx_bytes: bytes) -> pd.DataFrame:
     combined["Goals"] = combined["Goals"].astype(int)
     return combined[["Division", "Team", "Player", "Goals"]]
 
-# ---------------------- FETCH HELPER -----------------------------------------
+# =========================
+# Fetch helpers
+# =========================
 def fetch_xlsx_bytes_from_url(url: str) -> bytes:
     r = requests.get(url, timeout=30)
     r.raise_for_status()
@@ -256,34 +156,28 @@ def fetch_xlsx_bytes_from_url(url: str) -> bytes:
         raise ValueError("Downloaded file is empty.")
     return r.content
 
-# ---------------------- UI HELPERS -------------------------------------------
+# =========================
+# UI helpers
+# =========================
 def display_metrics(df: pd.DataFrame) -> None:
     total = int(df["Goals"].sum()) if not df.empty else 0
     players = df["Player"].nunique() if not df.empty else 0
     teams = df["Team"].nunique() if not df.empty else 0
     c1, c2, c3 = st.columns(3)
-    with c1: metric_card("TOTAL GOALS", f"{total}", "⚽")
-    with c2: metric_card("NUMBER OF PLAYERS", f"{players}", "👤")
-    with c3: metric_card("NUMBER OF TEAMS", f"{teams}", "🛡")
+    c1.metric("TOTAL GOALS", f"{total}")
+    c2.metric("NUMBER OF PLAYERS", f"{players}")
+    c3.metric("NUMBER OF TEAMS", f"{teams}")
 
 def bar_chart(df: pd.DataFrame, category: str, value: str, title: str) -> alt.Chart:
-    """Horizontal bar chart with INTEGER ticks and rounded bars."""
-    max_val = int(df[value].max()) if not df.empty else 1
-    tick_vals = list(range(0, max_val + 1)) if max_val <= 50 else None
     return (
         alt.Chart(df)
-        .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6)
+        .mark_bar()
         .encode(
-            x=alt.X(
-                f"{value}:Q",
-                title="Number of Goals",
-                axis=alt.Axis(format="d", tickMinStep=1, values=tick_vals),
-                scale=alt.Scale(domainMin=0, nice=False),
-            ),
+            x=alt.X(f"{value}:Q", title="Number of Goals"),
             y=alt.Y(f"{category}:N", sort="-x", title=category),
             tooltip=[category, value],
         )
-        .properties(height=420, title=title)
+        .properties(height=400, title=title)
     )
 
 def pie_chart(df: pd.DataFrame) -> alt.Chart:
@@ -300,6 +194,7 @@ def pie_chart(df: pd.DataFrame) -> alt.Chart:
     )
 
 def make_reports_zip(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
+    """Create a ZIP with CSVs for full and filtered views and summaries (Top Scorers includes Team)."""
     team_goals = (
         filtered_df.groupby("Team", as_index=False)["Goals"]
         .sum()
@@ -320,34 +215,31 @@ def make_reports_zip(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
     buf.seek(0)
     return buf.read()
 
-# ---------------------- APP ---------------------------------------------------
+# =========================
+# App
+# =========================
 def main():
+    # Page title in browser tab
     st.set_page_config(page_title="ABEER BLUESTAR SOCCER FEST 2K25", page_icon="⚽", layout="wide")
 
-    # Theme toggle
-    with st.sidebar:
-        st.header("Controls")
-        theme = st.radio("Appearance", ["Dark", "Light"], index=0, horizontal=True)
-        if st.button("🔄 Refresh Data"):
-            st.cache_data.clear()
-            st.session_state["last_refresh"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        st.markdown("---")
-
-    inject_brand_css(theme)
-
-    # Centered ALL-CAPS heading
+    # ===== Centered ALL-CAPS heading =====
     st.markdown(
-        "<h1 style='text-align:center; margin-top:0; margin-bottom:.25rem;'>"
+        "<h1 style='text-align:center; margin-top:0; margin-bottom:0.25rem;'>"
         "ABEER BLUESTAR SOCCER FEST 2K25"
         "</h1>",
         unsafe_allow_html=True,
     )
 
-    # ---- Hard-coded Google Sheets XLSX URL ----
+    # ---- Hidden, hard-coded Google Sheets XLSX URL ----
     XLSX_URL = (
         "https://docs.google.com/spreadsheets/d/e/"
         "2PACX-1vRpCD-Wh_NnGQjJ1Mh3tuU5Mdcl8TK41JopMUcSnfqww8wkPXKKgRyg7v4sC_vuUw/pub?output=xlsx"
     )
+
+    st.sidebar.header("Controls")
+    if st.sidebar.button("🔄 Refresh Data"):
+        st.cache_data.clear()
+        st.session_state["last_refresh"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     @st.cache_data(ttl=300)
     def load_data():
@@ -360,21 +252,26 @@ def main():
         st.error(f"Failed to load data: {e}")
         st.stop()
 
-    last_ref = st.session_state.get("last_refresh", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    # Show last refreshed time
+    last_ref = st.session_state.get(
+        "last_refresh", datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
     st.sidebar.caption(f"Last refreshed: {last_ref}")
 
-    # Filters
+    # ====== Filters ======
     st.sidebar.header("Filters")
     div_opts = ["All"] + sorted(data["Division"].unique().tolist())
     div_sel = st.sidebar.selectbox("Division", div_opts)
     data_div = data if div_sel == "All" else data[data["Division"] == div_sel]
 
+    # Team filter
     team_opts = sorted(data_div["Team"].unique().tolist())
     team_sel = st.sidebar.multiselect("Team (optional)", team_opts)
     filtered = data_div if not team_sel else data_div[data_div["Team"].isin(team_sel)]
 
+    # Player search: type names (comma-separated or partial); case-insensitive
     st.sidebar.subheader("Player search")
-    player_query = st.sidebar.text_input("Type names (comma-separated, partial OK)", value="")
+    player_query = st.sidebar.text_input("Type player names (comma-separated, partial OK)", value="")
     if player_query.strip():
         tokens = [t.strip().lower() for t in player_query.split(",") if t.strip()]
         if tokens:
@@ -383,103 +280,112 @@ def main():
                 mask = mask | filtered["Player"].str.lower().str.contains(t, na=False)
             filtered = filtered[mask]
 
-    players_pick = st.sidebar.multiselect("Players (refine optional)", options=sorted(filtered["Player"].unique()))
+    # Optional refine by explicit player pick
+    current_players = sorted(filtered["Player"].unique().tolist())
+    players_pick = st.sidebar.multiselect("Players (refine optional)", options=current_players)
     if players_pick:
         filtered = filtered[filtered["Player"].isin(players_pick)]
 
-    # ---------- TABS ----------
-    overview_tab, teams_tab, players_tab, downloads_tab = st.tabs(
-        ["🏠 OVERVIEW", "🛡 TEAMS", "⭐ PLAYERS", "⬇ DOWNLOADS"]
+    # ====== Metrics ======
+    display_metrics(filtered)
+
+    # ====== Table (hide index/serial numbers) ======
+    st.subheader("Goal Scoring Records")
+    if filtered.empty:
+        st.info("No records under current filters.")
+    else:
+        table_df = filtered.sort_values("Goals", ascending=False).reset_index(drop=True)
+        st.dataframe(table_df, use_container_width=True, hide_index=True)
+
+    # ====== Goals by Team ======
+    st.subheader("Goals by Team")
+    team_goals = (
+        filtered.groupby("Team", as_index=False)["Goals"]
+        .sum()
+        .sort_values("Goals", ascending=False)
+    )
+    if team_goals.empty:
+        st.info("No team data to display for the current filters.")
+    else:
+        st.altair_chart(bar_chart(team_goals, "Team", "Goals", "Goals by Team"), use_container_width=True)
+
+    # ====== Top Scorers (0/1/2+ safe) ======
+    st.subheader("Top Scorers")
+    # For chart/slider: aggregate by Player only
+    player_goals_total = (
+        filtered.groupby("Player", as_index=False)["Goals"]
+        .sum()
+        .sort_values("Goals", ascending=False)
+    )
+    max_players = int(player_goals_total.shape[0])
+
+    if max_players == 0:
+        st.info("No player data to display for the current filters.")
+    elif max_players == 1:
+        st.caption("Only one player found — showing that player.")
+        single_df = player_goals_total.head(1).reset_index(drop=True)
+        st.dataframe(single_df, use_container_width=True, hide_index=True)
+        st.altair_chart(
+            bar_chart(single_df, "Player", "Goals", "Top 1 Player by Goals"),
+            use_container_width=True,
+        )
+    else:
+        default_top = min(10, max_players)
+        top_n = st.sidebar.slider(
+            "Top N players",
+            min_value=1,
+            max_value=max_players,
+            value=int(default_top),
+            key=f"topn_{max_players}",
+        )
+        top_df = player_goals_total.head(int(top_n)).reset_index(drop=True)
+        st.dataframe(top_df, use_container_width=True, hide_index=True)
+        st.altair_chart(
+            bar_chart(top_df, "Player", "Goals", f"Top {int(top_n)} Players by Goals"),
+            use_container_width=True,
+        )
+
+    # ====== Downloads ======
+    st.subheader("Download Reports")
+    # Individual CSVs
+    st.download_button(
+        "⬇️ Download FULL records (CSV)",
+        data=data.to_csv(index=False),
+        file_name="records_full.csv",
+        mime="text/csv",
+    )
+    st.download_button(
+        "⬇️ Download FILTERED records (CSV)",
+        data=filtered.to_csv(index=False),
+        file_name="records_filtered.csv",
+        mime="text/csv",
+    )
+    # Top scorers WITH team (convenience CSV)
+    top_scorers_with_team = (
+        filtered.groupby(["Player", "Team"], as_index=False)["Goals"]
+        .sum()
+        .sort_values(["Goals", "Player"], ascending=[False, True])
+        [["Player", "Team", "Goals"]]
+    )
+    st.download_button(
+        "⬇️ Download TOP SCORERS (with Team) CSV",
+        data=top_scorers_with_team.to_csv(index=False),
+        file_name="top_scorers_filtered.csv",
+        mime="text/csv",
+    )
+    # ZIP bundle (full + filtered + summaries)
+    zip_bytes = make_reports_zip(data, filtered)
+    st.download_button(
+        "📦 Download ALL reports (ZIP)",
+        data=zip_bytes,
+        file_name="football_reports.zip",
+        mime="application/zip",
     )
 
-    with overview_tab:
-        display_metrics(filtered)
-        st.subheader("Goal Scoring Records")
-        if filtered.empty:
-            st.info("No records under current filters.")
-        else:
-            table_df = filtered.sort_values("Goals", ascending=False).reset_index(drop=True)
-            st.dataframe(
-                table_df,
-                use_container_width=True,
-                hide_index=True,
-                column_config={"Goals": st.column_config.NumberColumn("Goals", format="%d")},
-            )
-        if div_sel == "All" and not data.empty:
-            st.subheader("Goals Distribution by Division")
-            st.altair_chart(pie_chart(data), use_container_width=True)
-
-    with teams_tab:
-        st.subheader("Goals by Team")
-        team_goals = (
-            filtered.groupby("Team", as_index=False)["Goals"]
-            .sum()
-            .sort_values("Goals", ascending=False)
-        )
-        if team_goals.empty:
-            st.info("No team data to display.")
-        else:
-            st.altair_chart(bar_chart(team_goals, "Team", "Goals", "Goals by Team"),
-                            use_container_width=True)
-
-    with players_tab:
-        st.subheader("Top Scorers")
-        player_goals_total = (
-            filtered.groupby("Player", as_index=False)["Goals"]
-            .sum()
-            .sort_values("Goals", ascending=False)
-        )
-        n = player_goals_total.shape[0]
-        if n == 0:
-            st.info("No player data.")
-        elif n == 1:
-            single_df = player_goals_total.reset_index(drop=True)
-            st.dataframe(single_df, use_container_width=True, hide_index=True,
-                         column_config={"Goals": st.column_config.NumberColumn("Goals", format="%d")})
-            st.altair_chart(bar_chart(single_df, "Player", "Goals", "Top 1 Player"),
-                            use_container_width=True)
-        else:
-            default_top = min(10, int(n))
-            top_n = st.sidebar.slider("Top N players", 1, int(n), default_top, key=f"topn_{n}")
-            top_df = player_goals_total.head(int(top_n)).reset_index(drop=True)
-            st.dataframe(top_df, use_container_width=True, hide_index=True,
-                         column_config={"Goals": st.column_config.NumberColumn("Goals", format="%d")})
-            st.altair_chart(bar_chart(top_df, "Player", "Goals", f"Top {int(top_n)} Players"),
-                            use_container_width=True)
-
-    with downloads_tab:
-        st.subheader("Download Reports")
-        st.download_button(
-            "⬇️ FULL records (CSV)",
-            data=data.to_csv(index=False),
-            file_name="records_full.csv",
-            mime="text/csv",
-        )
-        st.download_button(
-            "⬇️ FILTERED records (CSV)",
-            data=filtered.to_csv(index=False),
-            file_name="records_filtered.csv",
-            mime="text/csv",
-        )
-        top_scorers_with_team = (
-            filtered.groupby(["Player", "Team"], as_index=False)["Goals"]
-            .sum()
-            .sort_values(["Goals", "Player"], ascending=[False, True])
-            [["Player", "Team", "Goals"]]
-        )
-        st.download_button(
-            "⬇️ TOP SCORERS (with Team) CSV",
-            data=top_scorers_with_team.to_csv(index=False),
-            file_name="top_scorers_filtered.csv",
-            mime="text/csv",
-        )
-        zip_bytes = make_reports_zip(data, filtered)
-        st.download_button(
-            "📦 ALL reports (ZIP)",
-            data=zip_bytes,
-            file_name="football_reports.zip",
-            mime="application/zip",
-        )
+    # ====== Division distribution ======
+    if div_sel == "All" and not data.empty:
+        st.subheader("Goals Distribution by Division")
+        st.altair_chart(pie_chart(data), use_container_width=True)
 
 if __name__ == "__main__":
     main()
