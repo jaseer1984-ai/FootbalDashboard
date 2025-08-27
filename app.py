@@ -23,9 +23,11 @@ def inject_fluid_css():
       .stApp { font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
       .block-container { padding-top:.6rem; padding-bottom:2rem; max-width:96vw; width:96vw; }
       @media (min-width: 1600px) { .block-container { max-width:1500px; width:1500px; } }
+      /* Smaller, wrapping title */
       h1 {
-        text-align:center; margin:.2rem 0 .7rem 0; letter-spacing:.06em; font-weight:700; line-height:1.15;
-        font-size: clamp(22px, 3vw, 36px); white-space:normal; overflow-wrap:anywhere; word-break:break-word;
+        text-align:center; margin:.2rem 0 .7rem 0; letter-spacing:.04em; font-weight:700; line-height:1.15;
+        font-size: clamp(16px, 2vw, 28px);  /* reduced size */
+        white-space:normal; overflow-wrap:anywhere; word-break:break-word;
       }
       .stButton > button, .stDownloadButton > button {
         background:#0ea5e9 !important; color:#fff !important; border:0 !important;
