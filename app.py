@@ -23,7 +23,6 @@ def inject_fluid_css():
       .stApp { font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
       .block-container { padding-top:.6rem; padding-bottom:2rem; max-width:96vw; width:96vw; }
       @media (min-width: 1600px) { .block-container { max-width:1500px; width:1500px; } }
-      /* Smaller, wrapping title */
       h1 {
         text-align:center; margin:.2rem 0 .7rem 0; letter-spacing:.06em; font-weight:700; line-height:1.15;
         font-size: clamp(22px, 3vw, 36px); white-space:normal; overflow-wrap:anywhere; word-break:break-word;
@@ -235,8 +234,9 @@ def make_reports_zip(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
     buf.seek(0)
     return buf.read()
 
-# ----- New helpers for Quick Insights & Analytics -----
+# ----- Quick Insights & Analytics -----
 def quick_insights(df: pd.DataFrame, scope: str = "Current view") -> None:
+    """Bullet insights; robust to empty frames and avoids MultiIndex unpack bugs."""
     st.subheader("Quick Insights")
     if df.empty:
         st.info("No data available for insights.")
@@ -253,15 +253,23 @@ def quick_insights(df: pd.DataFrame, scope: str = "Current view") -> None:
     c3.metric("Teams", f"{n_teams}")
     c4.metric("Divisions", f"{n_divs}")
 
-    # Top team & top scorer
-    team_tot = df.groupby("Team")["Goals"].sum().sort_values(ascending=False)
-    top_team, top_team_goals = (team_tot.index[0], int(team_tot.iloc[0])) if not team_tot.empty else ("—", 0)
+    # Top team
+    team_tot = df.groupby("Team", as_index=False)["Goals"].sum().sort_values("Goals", ascending=False)
+    if not team_tot.empty:
+        top_team = str(team_tot.iloc[0]["Team"])
+        top_team_goals = int(team_tot.iloc[0]["Goals"])
+    else:
+        top_team, top_team_goals = "—", 0
 
-    scorer_tot = (df.groupby(["Player","Team"])["Goals"]
-                  .sum().sort_values(ascending=False))
+    # Top scorer (robust)
+    scorer_tot = (df.groupby(["Player", "Team"], as_index=False)["Goals"]
+                    .sum()
+                    .sort_values(["Goals", "Player"], ascending=[False, True]))
     if not scorer_tot.empty:
-        (p, t), g = scorer_tot.index[0]
-        top_player, top_player_team, top_player_goals = p, t, int(scorer_tot.iloc[0])
+        row = scorer_tot.iloc[0]
+        top_player = str(row["Player"])
+        top_player_team = str(row["Team"])
+        top_player_goals = int(row["Goals"])
     else:
         top_player, top_player_team, top_player_goals = "—", "—", 0
 
@@ -271,9 +279,8 @@ def quick_insights(df: pd.DataFrame, scope: str = "Current view") -> None:
     )
 
     if n_divs > 1:
-        div_share = (df.groupby("Division")["Goals"].sum()
-                     .sort_values(ascending=False)
-                     .reset_index())
+        div_share = (df.groupby("Division", as_index=False)["Goals"].sum()
+                       .sort_values("Goals", ascending=False))
         div_share["Share %"] = (div_share["Goals"] / div_share["Goals"].sum() * 100).round(1)
         st.write("**Division contribution (by goals):**")
         st.dataframe(div_share, use_container_width=True, hide_index=True)
@@ -293,7 +300,8 @@ def analytics_charts(df: pd.DataFrame):
         .encode(
             x=alt.X("PlayerGoals:Q", bin=alt.Bin(maxbins=20), axis=alt.Axis(format="d"), title="Goals (per player)"),
             y=alt.Y("count():Q", axis=alt.Axis(format="d"), title="Number of Players"),
-            tooltip=[alt.Tooltip("PlayerGoals:Q", title="Goals", format="d"), alt.Tooltip("count():Q", title="Players")]
+            tooltip=[alt.Tooltip("PlayerGoals:Q", title="Goals", format="d"),
+                     alt.Tooltip("count():Q", title="Players")]
         )
         .properties(height=340, title="Distribution of Player Goals")
     )
@@ -310,7 +318,8 @@ def analytics_charts(df: pd.DataFrame):
             y=alt.Y("Total_Goals:Q", axis=alt.Axis(format="d"), title="Total Goals"),
             size=alt.Size("Total_Goals:Q", legend=None),
             color=alt.Color("Total_Goals:Q", legend=None),
-            tooltip=["Team", alt.Tooltip("Player_Count:Q", title="Players", format="d"),
+            tooltip=["Team",
+                     alt.Tooltip("Player_Count:Q", title="Players", format="d"),
                      alt.Tooltip("Total_Goals:Q", title="Goals", format="d")]
         )
         .properties(height=340, title="Team Performance: Players vs Goals")
@@ -371,8 +380,6 @@ def main():
     if player_query.strip():
         tokens = [t.strip().lower() for t in player_query.split(",") if t.strip()]
         if tokens:
-            # keep behavior but make mask robust for all pandas versions
-            import numpy as np
             mask = pd.Series(False, index=filtered.index)
             col = filtered["Player"].astype(str).str.lower()
             for t in tokens:
@@ -384,7 +391,7 @@ def main():
     if players_pick:
         filtered = filtered[filtered["Player"].isin(players_pick)]
 
-    # ===== Tabs (added QUICK INSIGHTS and ANALYTICS) =====
+    # ===== Tabs =====
     t_overview, t_quick, t_teams, t_players, t_analytics, t_downloads = st.tabs(
         ["OVERVIEW", "QUICK INSIGHTS", "TEAMS", "PLAYERS", "ANALYTICS", "DOWNLOADS"]
     )
@@ -452,17 +459,15 @@ def main():
 
     # ---------------------- QUICK INSIGHTS ----------------------
     with t_quick:
-        # Insights are based on CURRENT FILTERS
-        scope = "Current view" if div_sel != "All" or team_sel or player_query.strip() or players_pick else "All divisions"
+        scope = "Current view" if (div_sel != "All" or team_sel or player_query.strip() or players_pick) else "All divisions"
         quick_insights(filtered if scope == "Current view" else full_df, scope=scope)
 
-    # ---------------------- TEAMS (Teams List) ----------------------
+    # ---------------------- TEAMS ----------------------
     with t_teams:
         st.subheader("Teams List")
         if filtered.empty:
             st.info("No teams under current filters.")
         else:
-            # Summary: Division(s), Team, Players, Total Goals, Top Scorer, Top Scorer Goals
             team_div = (filtered.groupby("Team")["Division"]
                         .agg(lambda s: ", ".join(sorted(s.astype(str).unique()))).reset_index())
             team_summary = (filtered.groupby("Team", as_index=False)
@@ -490,7 +495,7 @@ def main():
                                       "Team", "Goals", "Team Totals (Goals)"),
                             use_container_width=True)
 
-    # ---------------------- PLAYERS (Players List) ----------------------
+    # ---------------------- PLAYERS ----------------------
     with t_players:
         st.subheader("Players List")
         if filtered.empty:
@@ -517,7 +522,6 @@ def main():
         st.download_button("⬇️ Download FILTERED (current view) CSV",
             data=filtered.to_csv(index=False), file_name="records_filtered.csv", mime="text/csv")
 
-        # Extra downloads for new tabs
         teams_list_dl = (filtered.groupby(["Team","Division"], as_index=False)
                          .agg(Players=("Player","nunique"), Total_Goals=("Goals","sum"))
                          .sort_values(["Total_Goals","Team"], ascending=[False,True]))
@@ -529,7 +533,6 @@ def main():
         st.download_button("⬇️ Download PLAYERS LIST (current view) CSV",
             data=players_list_dl.to_csv(index=False), file_name="players_list_filtered.csv", mime="text/csv")
 
-        # ZIP bundle (includes full/filtered + summaries)
         zip_bytes = make_reports_zip(full_df, filtered)
         st.download_button("📦 Download ALL reports (ZIP)",
             data=zip_bytes, file_name="football_reports.zip", mime="application/zip")
