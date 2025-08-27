@@ -5,6 +5,7 @@
 # - Division, Team, Player (typed search + multiselect refine)
 # - Safe Top-N logic for 0 / 1 / 2+ players
 # - Download reports (ZIP of CSVs + individual CSV buttons)
+# - Tables hide index/serial numbers
 
 import streamlit as st
 import pandas as pd
@@ -193,7 +194,6 @@ def pie_chart(df: pd.DataFrame) -> alt.Chart:
 
 def make_reports_zip(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
     """Create a ZIP with CSVs for full and filtered views and summaries."""
-    # Summaries from filtered data
     team_goals = (
         filtered_df.groupby("Team")["Goals"]
         .sum()
@@ -206,7 +206,6 @@ def make_reports_zip(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
         .reset_index()
         .sort_values("Goals", ascending=False)
     )
-
     buf = BytesIO()
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as z:
         z.writestr("records_full.csv", full_df.to_csv(index=False))
@@ -283,12 +282,13 @@ def main():
     # ====== Metrics ======
     display_metrics(filtered)
 
-    # ====== Table ======
+    # ====== Table (hide index/serial numbers) ======
     st.subheader("Goal Scoring Records")
     if filtered.empty:
         st.info("No records under current filters.")
     else:
-        st.dataframe(filtered.sort_values("Goals", ascending=False), use_container_width=True)
+        table_df = filtered.sort_values("Goals", ascending=False).reset_index(drop=True)
+        st.dataframe(table_df, use_container_width=True, hide_index=True)
 
     # ====== Goals by Team ======
     st.subheader("Goals by Team")
@@ -316,8 +316,10 @@ def main():
         st.info("No player data to display for the current filters.")
     elif max_players == 1:
         st.caption("Only one player found — showing that player.")
+        single_df = player_goals.head(1).reset_index(drop=True)
+        st.dataframe(single_df, use_container_width=True, hide_index=True)
         st.altair_chart(
-            bar_chart(player_goals.head(1), "Player", "Goals", "Top 1 Player by Goals"),
+            bar_chart(single_df, "Player", "Goals", "Top 1 Player by Goals"),
             use_container_width=True,
         )
     else:
@@ -329,14 +331,15 @@ def main():
             value=int(default_top),
             key=f"topn_{max_players}",
         )
+        top_df = player_goals.head(int(top_n)).reset_index(drop=True)
+        st.dataframe(top_df, use_container_width=True, hide_index=True)
         st.altair_chart(
-            bar_chart(player_goals.head(int(top_n)), "Player", "Goals", f"Top {int(top_n)} Players by Goals"),
+            bar_chart(top_df, "Player", "Goals", f"Top {int(top_n)} Players by Goals"),
             use_container_width=True,
         )
 
     # ====== Downloads ======
     st.subheader("Download Reports")
-    # Individual CSVs
     st.download_button(
         "⬇️ Download FULL records (CSV)",
         data=data.to_csv(index=False),
@@ -349,8 +352,6 @@ def main():
         file_name="records_filtered.csv",
         mime="text/csv",
     )
-
-    # ZIP bundle (full + filtered + summaries)
     zip_bytes = make_reports_zip(data, filtered)
     st.download_button(
         "📦 Download ALL reports (ZIP)",
