@@ -1,15 +1,14 @@
-# app.py — ABEER BLUESTAR SOCCER FEST 2K25 Dashboard (Enhanced Look)
+# app.py — ABEER BLUESTAR SOCCER FEST 2K25 (Enhanced Look)
 # - Centered ALL-CAPS heading
-# - Custom brand theme + CSS (clean dark look)
-# - Tabs (Overview / Teams / Players / Downloads)
-# - Hidden, hard-coded Google Sheets XLSX URL
-# - Refresh button + "last refreshed" timestamp
+# - Modern theme (Dark/Light toggle) with custom CSS
+# - Tabs: Overview / Teams / Players / Downloads
+# - Pretty metric cards with icons
 # - Robust XLSX parsing (no openpyxl needed)
-# - Division, Team, Player (typed search + multiselect refine)
-# - Safe Top-N logic for 0 / 1 / 2+ players
-# - Integer tick marks on charts (no decimals)
-# - Download reports (ZIP + individual CSVs; Top Scorers includes Team)
-# - Tables hide index/serial numbers
+# - Division, Team, Player filters + search
+# - Safe Top-N handling
+# - Integer tick marks on charts (no decimals) + rounded bars
+# - Downloads: CSVs + ZIP (top scorers include Team)
+# - Tables hide index and align numbers
 
 import streamlit as st
 import pandas as pd
@@ -22,67 +21,121 @@ import requests
 from datetime import datetime
 
 # ---------------------- LOOK & FEEL ------------------------------------------
-def inject_brand_css():
-    st.markdown("""
+def inject_brand_css(theme: str = "Dark"):
+    """Inject polished CSS; theme is 'Dark' or 'Light'."""
+    if theme == "Light":
+        bg_grad = "linear-gradient(180deg,#f8fbff 0%,#f1f5ff 30%,#eef3ff 100%)"
+        text = "#0b1e35"
+        card = "rgba(10,34,67,0.04)"
+        border = "rgba(10,34,67,0.15)"
+        sidebar_bg = "rgba(10,34,67,0.03)"
+        grid = "#d8e3f6"
+        axis_label = "#3a4b66"
+        axis_title = "#274163"
+    else:  # Dark
+        bg_grad = "radial-gradient(1200px 600px at 10% -10%, #12315a 0%, #0e2a57 40%, #0b1e35 100%)"
+        text = "#eef2f6"
+        card = "rgba(255,255,255,0.06)"
+        border = "rgba(255,255,255,0.15)"
+        sidebar_bg = "rgba(255,255,255,0.03)"
+        grid = "#1f3b61"
+        axis_label = "#dbeafe"
+        axis_title = "#93c5fd"
+
+    st.markdown(f"""
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-      :root {
-        --brand-primary:#0ea5e9;   /* cyan */
-        --brand-accent:#22d3ee;    /* light cyan */
-        --brand-dark:#0b1e35;      /* page background */
-        --brand-card:rgba(255,255,255,0.06);
-        --brand-border:rgba(255,255,255,0.15);
-        --brand-text:#eef2f6;
-      }
-      .stApp {
-        background: radial-gradient(1200px 600px at 10% -10%, #12315a 0%, #0e2a57 40%, #0b1e35 100%) !important;
-        color: var(--brand-text); font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      }
-      .block-container { padding-top: .75rem; padding-bottom: 2rem; }
-      h1 { letter-spacing:.06em; font-weight:700; }
-      /* Cards for metrics */
-      [data-testid="stMetric"] {
+      :root {{
+        --brand-primary:#0ea5e9;
+        --brand-accent:#22d3ee;
+        --brand-text:{text};
+        --brand-card:{card};
+        --brand-border:{border};
+        --sidebar-bg:{sidebar_bg};
+      }}
+      .stApp {{
+        background: {bg_grad} !important;
+        color: var(--brand-text);
+        font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }}
+      .block-container {{ padding-top: .6rem; padding-bottom: 2rem; max-width: 1180px; }}
+      h1 {{ letter-spacing:.06em; font-weight:700; }}
+
+      /* Sidebar */
+      section[data-testid="stSidebar"] {{
+        background: var(--sidebar-bg);
+        border-right: 1px solid var(--brand-border);
+      }}
+
+      /* Tabs as pills */
+      [data-baseweb="tab-list"] {{ gap: 8px; }}
+      button[role="tab"] {{
         background: var(--brand-card); border: 1px solid var(--brand-border);
-        border-radius: 16px; padding: 16px;
-      }
-      [data-testid="stMetricValue"] { font-size: 2.1rem; }
+        border-radius: 12px; padding: .35rem .8rem; font-weight:600;
+      }}
+      button[role="tab"][aria-selected="true"] {{
+        background: linear-gradient(90deg, var(--brand-primary), var(--brand-accent));
+        color: #fff; border-color: transparent;
+      }}
+
+      /* Metric cards */
+      .metric-card {{
+        display:flex; align-items:center; gap:12px;
+        background: var(--brand-card); border: 1px solid var(--brand-border);
+        border-radius: 18px; padding: 16px 18px;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+      }}
+      .metric-icon {{
+        width:44px; height:44px; display:grid; place-items:center;
+        border-radius:12px; background: rgba(14,165,233,.15); color:#22d3ee; font-size:22px;
+      }}
+      .metric-value {{ font-size: 28px; font-weight: 700; line-height: 1; }}
+      .metric-label {{ font-size: 12px; opacity: .8; }}
+
       /* Buttons & downloads */
-      .stButton > button, .stDownloadButton > button {
-        background: linear-gradient(90deg, var(--brand-primary), var(--brand-accent)) !important;
+      .stButton > button, .stDownloadButton > button {{
+        background: linear-gradient(90deg, #0ea5e9, #22d3ee) !important;
         color: white !important; border: 0 !important; border-radius: 12px !important;
         padding: 0.55rem 1rem !important; font-weight: 600 !important;
-      }
-      .stButton > button:hover, .stDownloadButton > button:hover { filter: brightness(1.06); }
+      }}
+      .stButton > button:hover, .stDownloadButton > button:hover {{ filter: brightness(1.06); }}
+
       /* Dataframes */
-      .stDataFrame table { border-radius: 10px; overflow: hidden; }
-      .stDataFrame tbody tr:nth-child(even) { background-color: rgba(255,255,255,0.03); }
-      /* Sidebar */
-      section[data-testid="stSidebar"] {
-        background: rgba(255,255,255,0.03);
-        border-right: 1px solid var(--brand-border);
-      }
-      /* Hide default menu/footer (uncomment to show) */
-      /* #MainMenu {visibility:hidden;} footer {visibility:hidden;} */
+      .stDataFrame table {{ border-radius: 10px; overflow: hidden; }}
+      .stDataFrame tbody tr:nth-child(even) {{ background-color: rgba(255,255,255,0.03); }}
     </style>
     """, unsafe_allow_html=True)
 
-def apply_altair_theme():
+    # Altair theme (match CSS)
     alt.themes.register("club", lambda: {
         "config": {
             "view": {"stroke": "transparent"},
             "background": "transparent",
-            "title": {"font": "Poppins", "fontSize": 18, "color": "#eef2f6"},
-            "axis":  {"labelColor": "#dbeafe", "titleColor": "#93c5fd", "gridColor":"#1f3b61"},
-            "legend":{"labelColor": "#dbeafe", "titleColor": "#93c5fd"},
+            "title": {"font": "Poppins", "fontSize": 18, "color": text},
+            "axis":  {"labelColor": axis_label, "titleColor": axis_title, "gridColor": grid},
+            "legend":{"labelColor": axis_label, "titleColor": axis_title},
             "range": {"category": ["#22d3ee","#60a5fa","#34d399","#f59e0b","#f87171","#a78bfa"]}
         }
     })
     alt.themes.enable("club")
 
+def metric_card(label: str, value: str, icon: str):
+    st.markdown(
+        f"""
+        <div class="metric-card">
+          <div class="metric-icon">{icon}</div>
+          <div>
+            <div class="metric-value">{value}</div>
+            <div class="metric-label">{label}</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 # ---------------------- XLSX FALLBACK (no openpyxl) --------------------------
 def _parse_xlsx_without_openpyxl(file_bytes: bytes) -> pd.DataFrame:
-    """Return first worksheet as raw grid (header=None)."""
     ns = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     with zipfile.ZipFile(BytesIO(file_bytes)) as z:
         shared = []
@@ -122,7 +175,6 @@ def _parse_xlsx_without_openpyxl(file_bytes: bytes) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 def _read_excel_raw(file_like_or_bytes) -> pd.DataFrame:
-    """Read Excel as raw grid (header=None). Tries pandas; falls back if engine missing."""
     if isinstance(file_like_or_bytes, (str, Path)):
         p = Path(file_like_or_bytes)
         with open(p, "rb") as fh:
@@ -142,7 +194,6 @@ def _read_excel_raw(file_like_or_bytes) -> pd.DataFrame:
 
 # ---------------------- ROBUST PARSER (sheet -> tidy) ------------------------
 def _find_block_start_indices(raw: pd.DataFrame) -> tuple[int | None, int | None]:
-    """Scan first two rows for 'B Division' and 'A Division' labels."""
     for row_idx in (0, 1):
         if row_idx >= len(raw):
             continue
@@ -158,17 +209,15 @@ def _find_block_start_indices(raw: pd.DataFrame) -> tuple[int | None, int | None
     return None, None
 
 def load_and_prepare_data_from_bytes(xlsx_bytes: bytes) -> pd.DataFrame:
-    """Parse the dual-table sheet into tidy [Division, Team, Player, Goals]."""
     raw = _read_excel_raw(xlsx_bytes)
     b_start, a_start = _find_block_start_indices(raw)
     if b_start is None and a_start is None:
         b_start = 0
         a_start = 4 if raw.shape[1] >= 7 else 3 if raw.shape[1] >= 6 else None
-
     header_row = 1 if (len(raw) > 1) else 0
     data_start = header_row + 1
-
     frames = []
+
     def extract_block(start_col: int, division_name: str):
         end_col = start_col + 3
         if start_col is None or end_col > raw.shape[1]:
@@ -213,17 +262,17 @@ def display_metrics(df: pd.DataFrame) -> None:
     players = df["Player"].nunique() if not df.empty else 0
     teams = df["Team"].nunique() if not df.empty else 0
     c1, c2, c3 = st.columns(3)
-    c1.metric("TOTAL GOALS", f"{total}")
-    c2.metric("NUMBER OF PLAYERS", f"{players}")
-    c3.metric("NUMBER OF TEAMS", f"{teams}")
+    with c1: metric_card("TOTAL GOALS", f"{total}", "⚽")
+    with c2: metric_card("NUMBER OF PLAYERS", f"{players}", "👤")
+    with c3: metric_card("NUMBER OF TEAMS", f"{teams}", "🛡")
 
 def bar_chart(df: pd.DataFrame, category: str, value: str, title: str) -> alt.Chart:
-    """Horizontal bar chart with INTEGER ticks (no decimals)."""
+    """Horizontal bar chart with INTEGER ticks and rounded bars."""
     max_val = int(df[value].max()) if not df.empty else 1
-    tick_vals = list(range(0, max_val + 1)) if max_val <= 50 else None  # prevent spammy ticks
+    tick_vals = list(range(0, max_val + 1)) if max_val <= 50 else None
     return (
         alt.Chart(df)
-        .mark_bar()
+        .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6)
         .encode(
             x=alt.X(
                 f"{value}:Q",
@@ -251,7 +300,6 @@ def pie_chart(df: pd.DataFrame) -> alt.Chart:
     )
 
 def make_reports_zip(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
-    """Create a ZIP with CSVs for full and filtered views and summaries (Top Scorers includes Team)."""
     team_goals = (
         filtered_df.groupby("Team", as_index=False)["Goals"]
         .sum()
@@ -275,8 +323,17 @@ def make_reports_zip(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
 # ---------------------- APP ---------------------------------------------------
 def main():
     st.set_page_config(page_title="ABEER BLUESTAR SOCCER FEST 2K25", page_icon="⚽", layout="wide")
-    inject_brand_css()
-    apply_altair_theme()
+
+    # Theme toggle
+    with st.sidebar:
+        st.header("Controls")
+        theme = st.radio("Appearance", ["Dark", "Light"], index=0, horizontal=True)
+        if st.button("🔄 Refresh Data"):
+            st.cache_data.clear()
+            st.session_state["last_refresh"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.markdown("---")
+
+    inject_brand_css(theme)
 
     # Centered ALL-CAPS heading
     st.markdown(
@@ -291,12 +348,6 @@ def main():
         "https://docs.google.com/spreadsheets/d/e/"
         "2PACX-1vRpCD-Wh_NnGQjJ1Mh3tuU5Mdcl8TK41JopMUcSnfqww8wkPXKKgRyg7v4sC_vuUw/pub?output=xlsx"
     )
-
-    # Controls / Refresh
-    st.sidebar.header("Controls")
-    if st.sidebar.button("🔄 Refresh Data"):
-        st.cache_data.clear()
-        st.session_state["last_refresh"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     @st.cache_data(ttl=300)
     def load_data():
@@ -343,14 +394,17 @@ def main():
 
     with overview_tab:
         display_metrics(filtered)
-
         st.subheader("Goal Scoring Records")
         if filtered.empty:
             st.info("No records under current filters.")
         else:
             table_df = filtered.sort_values("Goals", ascending=False).reset_index(drop=True)
-            st.dataframe(table_df, use_container_width=True, hide_index=True)
-
+            st.dataframe(
+                table_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={"Goals": st.column_config.NumberColumn("Goals", format="%d")},
+            )
         if div_sel == "All" and not data.empty:
             st.subheader("Goals Distribution by Division")
             st.altair_chart(pie_chart(data), use_container_width=True)
@@ -380,14 +434,16 @@ def main():
             st.info("No player data.")
         elif n == 1:
             single_df = player_goals_total.reset_index(drop=True)
-            st.dataframe(single_df, use_container_width=True, hide_index=True)
+            st.dataframe(single_df, use_container_width=True, hide_index=True,
+                         column_config={"Goals": st.column_config.NumberColumn("Goals", format="%d")})
             st.altair_chart(bar_chart(single_df, "Player", "Goals", "Top 1 Player"),
                             use_container_width=True)
         else:
             default_top = min(10, int(n))
             top_n = st.sidebar.slider("Top N players", 1, int(n), default_top, key=f"topn_{n}")
             top_df = player_goals_total.head(int(top_n)).reset_index(drop=True)
-            st.dataframe(top_df, use_container_width=True, hide_index=True)
+            st.dataframe(top_df, use_container_width=True, hide_index=True,
+                         column_config={"Goals": st.column_config.NumberColumn("Goals", format="%d")})
             st.altair_chart(bar_chart(top_df, "Player", "Goals", f"Top {int(top_n)} Players"),
                             use_container_width=True)
 
