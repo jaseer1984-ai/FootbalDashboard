@@ -10,9 +10,7 @@ import xml.etree.ElementTree as ET
 from io import BytesIO
 import requests
 from datetime import datetime
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+# Using Altair instead of Plotly for better compatibility
 
 # ---------------------- BEAUTIFUL LIGHT THEME & CARDS -------------------------
 def inject_beautiful_css():
@@ -500,95 +498,107 @@ def create_filter_panel(full_df: pd.DataFrame):
     
     return div_sel, team_sel, player_query, data_div
 
-def create_plotly_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title: str, color_col=None):
-    """Create a beautiful Plotly bar chart with light theme"""
-    fig = px.bar(
-        df, 
-        x=x_col, 
-        y=y_col,
-        title=title,
-        color=color_col,
-        color_discrete_sequence=['#0ea5e9', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444']
+def create_altair_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title: str, color_col=None):
+    """Create a beautiful Altair bar chart with light theme"""
+    base = alt.Chart(df).add_selection(
+        alt.selection_single()
     )
     
-    fig.update_layout(
-        plot_bgcolor='rgba(255,255,255,0.8)',
-        paper_bgcolor='rgba(255,255,255,0)',
-        font=dict(color='#1e293b', family='Inter'),
-        title_font=dict(size=18, color='#1e293b', family='Inter'),
-        xaxis=dict(
-            gridcolor='#e2e8f0',
-            linecolor='#cbd5e1',
-            titlefont=dict(color='#64748b', family='Inter'),
-            tickfont=dict(color='#475569')
-        ),
-        yaxis=dict(
-            gridcolor='#e2e8f0',
-            linecolor='#cbd5e1',
-            titlefont=dict(color='#64748b', family='Inter'),
-            tickfont=dict(color='#475569')
-        ),
-        showlegend=bool(color_col),
-        margin=dict(l=20, r=20, t=60, b=20)
-    )
+    if color_col:
+        chart = base.mark_bar(
+            cornerRadiusTopLeft=4,
+            cornerRadiusTopRight=4,
+            stroke='white',
+            strokeWidth=1
+        ).encode(
+            x=alt.X(f'{x_col}:Q', title=x_col.replace('_', ' ').title(), axis=alt.Axis(format='d', tickMinStep=1)),
+            y=alt.Y(f'{y_col}:N', sort='-x', title=y_col.replace('_', ' ').title()),
+            color=alt.Color(f'{color_col}:N', scale=alt.Scale(range=['#0ea5e9', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'])),
+            tooltip=[y_col, x_col, color_col] if color_col else [y_col, x_col]
+        )
+    else:
+        chart = base.mark_bar(
+            cornerRadiusTopLeft=4,
+            cornerRadiusTopRight=4,
+            color='#0ea5e9',
+            stroke='white',
+            strokeWidth=1
+        ).encode(
+            x=alt.X(f'{x_col}:Q', title=x_col.replace('_', ' ').title(), axis=alt.Axis(format='d', tickMinStep=1)),
+            y=alt.Y(f'{y_col}:N', sort='-x', title=y_col.replace('_', ' ').title()),
+            tooltip=[y_col, x_col]
+        )
     
-    fig.update_traces(
-        marker_line_color='rgba(255,255,255,0.8)',
-        marker_line_width=1,
-        hovertemplate='<b>%{y}</b><br>Goals: %{x}<extra></extra>'
+    return chart.properties(
+        title=alt.TitleParams(text=title, fontSize=16, anchor='start', color='#1e293b'),
+        height=400
+    ).resolve_scale(
+        color='independent'
     )
-    
-    return fig
 
-def create_pie_chart(df: pd.DataFrame) -> go.Figure:
-    """Create a beautiful Plotly pie chart with light theme"""
+def create_pie_chart(df: pd.DataFrame) -> alt.Chart:
+    """Create a beautiful Altair pie chart with light theme"""
     agg = df.groupby("Division")["Goals"].sum().reset_index()
     
-    fig = px.pie(
-        agg,
-        values='Goals',
-        names='Division',
-        title='🏆 Goals Distribution by Division',
-        color_discrete_sequence=['#0ea5e9', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444']
+    base = alt.Chart(agg).add_selection(
+        alt.selection_single()
     )
     
-    fig.update_layout(
-        plot_bgcolor='rgba(255,255,255,0.8)',
-        paper_bgcolor='rgba(255,255,255,0)',
-        font=dict(color='#1e293b', family='Inter'),
-        title_font=dict(size=18, color='#1e293b', family='Inter')
-    )
-    
-    fig.update_traces(
-        textposition='inside',
-        textinfo='percent+label',
-        textfont_size=12,
-        marker=dict(
-            line=dict(color='#ffffff', width=3)
+    pie = base.mark_arc(
+        innerRadius=30,
+        stroke='white',
+        strokeWidth=2
+    ).encode(
+        theta=alt.Theta('Goals:Q', title='Goals'),
+        color=alt.Color('Division:N', 
+            scale=alt.Scale(range=['#0ea5e9', '#3b82f6', '#8b5cf6', '#10b981']),
+            title='Division'
         ),
-        hovertemplate='<b>%{label}</b><br>Goals: %{value}<br>Percentage: %{percent}<extra></extra>'
+        tooltip=['Division:N', 'Goals:Q']
     )
     
-    return fig
+    text = base.mark_text(
+        align='center',
+        baseline='middle',
+        dx=0,
+        dy=0,
+        fontSize=12,
+        fontWeight='bold',
+        color='white'
+    ).encode(
+        theta=alt.Theta('Goals:Q'),
+        text=alt.Text('Goals:Q', format='d'),
+        color=alt.value('white')
+    )
+    
+    return (pie + text).properties(
+        title=alt.TitleParams(text='🏆 Goals Distribution by Division', fontSize=16, anchor='start', color='#1e293b'),
+        width=400,
+        height=400
+    ).resolve_scale(
+        color='independent'
+    )
 
 def create_advanced_analytics_charts(df: pd.DataFrame):
-    """Create advanced analytics charts"""
+    """Create advanced analytics charts using Altair"""
     if df.empty:
         return None, None
     
     # Goals distribution histogram
-    fig1 = px.histogram(
-        df, 
-        x='Goals', 
-        nbins=20,
-        title='📊 Goals Distribution',
-        color_discrete_sequence=['#0ea5e9']
-    )
-    fig1.update_layout(
-        plot_bgcolor='rgba(255,255,255,0.8)',
-        paper_bgcolor='rgba(255,255,255,0)',
-        font=dict(color='#1e293b', family='Inter'),
-        title_font=dict(size=16, color='#1e293b')
+    hist = alt.Chart(df).mark_bar(
+        color='#0ea5e9',
+        stroke='white',
+        strokeWidth=1,
+        cornerRadiusTopLeft=2,
+        cornerRadiusTopRight=2
+    ).encode(
+        alt.X('Goals:Q', bin=alt.Bin(maxbins=20), title='Goals'),
+        alt.Y('count():Q', title='Number of Players'),
+        tooltip=['Goals:Q', 'count():Q']
+    ).properties(
+        title=alt.TitleParams(text='📊 Goals Distribution', fontSize=16, anchor='start', color='#1e293b'),
+        width=400,
+        height=300
     )
     
     # Top teams vs players scatter
@@ -598,24 +608,23 @@ def create_advanced_analytics_charts(df: pd.DataFrame):
     }).reset_index()
     team_stats.columns = ['Team', 'Total_Goals', 'Player_Count']
     
-    fig2 = px.scatter(
-        team_stats,
-        x='Player_Count',
-        y='Total_Goals',
-        size='Total_Goals',
-        hover_name='Team',
-        title='🎯 Team Performance: Players vs Goals',
-        color='Total_Goals',
-        color_continuous_scale='Blues'
-    )
-    fig2.update_layout(
-        plot_bgcolor='rgba(255,255,255,0.8)',
-        paper_bgcolor='rgba(255,255,255,0)',
-        font=dict(color='#1e293b', family='Inter'),
-        title_font=dict(size=16, color='#1e293b')
+    scatter = alt.Chart(team_stats).mark_circle(
+        size=100,
+        stroke='white',
+        strokeWidth=2
+    ).encode(
+        x=alt.X('Player_Count:Q', title='Number of Players'),
+        y=alt.Y('Total_Goals:Q', title='Total Goals'),
+        size=alt.Size('Total_Goals:Q', scale=alt.Scale(range=[100, 500]), title='Total Goals'),
+        color=alt.Color('Total_Goals:Q', scale=alt.Scale(scheme='blues'), title='Total Goals'),
+        tooltip=['Team:N', 'Player_Count:Q', 'Total_Goals:Q']
+    ).properties(
+        title=alt.TitleParams(text='🎯 Team Performance: Players vs Goals', fontSize=16, anchor='start', color='#1e293b'),
+        width=400,
+        height=300
     )
     
-    return fig1, fig2
+    return hist, scatter
 
 def make_reports_zip(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
     team_goals = (
@@ -766,8 +775,8 @@ def main():
             
             with st.container():
                 st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-                fig = create_plotly_bar_chart(team_goals, "Goals", "Team", "🏆 Goals by Team")
-                st.plotly_chart(fig, use_container_width=True)
+                fig = create_altair_bar_chart(team_goals, "Goals", "Team", "🏆 Goals by Team")
+                st.altair_chart(fig, use_container_width=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown('<div class="section-header">🌟 Top Scorers</div>', unsafe_allow_html=True)
@@ -805,8 +814,8 @@ def main():
                 chart_df = top_df.groupby("Player", as_index=False)["Goals"].sum()
                 with st.container():
                     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-                    fig = create_plotly_bar_chart(chart_df, "Goals", "Player", f"🌟 Top {int(top_n)} Scorers")
-                    st.plotly_chart(fig, use_container_width=True)
+                    fig = create_altair_bar_chart(chart_df, "Goals", "Player", f"🌟 Top {int(top_n)} Scorers")
+                    st.altair_chart(fig, use_container_width=True)
                     st.markdown('</div>', unsafe_allow_html=True)
 
         if div_sel == "All Divisions" and not full_df.empty:
@@ -815,7 +824,7 @@ def main():
             with col1:
                 st.markdown('<div class="chart-container">', unsafe_allow_html=True)
                 fig = create_pie_chart(full_df)
-                st.plotly_chart(fig, use_container_width=True)
+                st.altair_chart(fig, use_container_width=True)
                 st.markdown('</div>', unsafe_allow_html=True)
             
             with col2:
@@ -884,9 +893,9 @@ def main():
 
             # Team performance chart
             st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-            fig = create_plotly_bar_chart(teams_list.rename(columns={"Total_Goals":"Goals"}),
+            fig = create_altair_bar_chart(teams_list.rename(columns={"Total_Goals":"Goals"}),
                                           "Goals", "Team", "🏆 Team Performance (Total Goals)")
-            st.plotly_chart(fig, use_container_width=True)
+            st.altair_chart(fig, use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
     # ---------------------- PLAYERS TAB ----------------------
@@ -940,12 +949,12 @@ def main():
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-                st.plotly_chart(fig1, use_container_width=True)
+                st.altair_chart(fig1, use_container_width=True)
                 st.markdown('</div>', unsafe_allow_html=True)
             
             with col2:
                 st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-                st.plotly_chart(fig2, use_container_width=True)
+                st.altair_chart(fig2, use_container_width=True)
                 st.markdown('</div>', unsafe_allow_html=True)
             
             # Performance insights
