@@ -1,5 +1,5 @@
 # ABEER BLUESTAR SOCCER FEST 2K25 — Streamlit Dashboard (with tabs)
-# Tabs: OVERVIEW, TEAMS (Teams List), PLAYERS (Players List), DOWNLOADS
+# Tabs: OVERVIEW, QUICK INSIGHTS, TEAMS (Teams List), PLAYERS (Players List), ANALYTICS, DOWNLOADS
 # - Integer ticks on charts / safe slider
 # - Full vs Filtered downloads (+ Teams/Players CSV)
 # - Robust XLSX parsing without openpyxl
@@ -235,6 +235,93 @@ def make_reports_zip(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
     buf.seek(0)
     return buf.read()
 
+# ----- New helpers for Quick Insights & Analytics -----
+def quick_insights(df: pd.DataFrame, scope: str = "Current view") -> None:
+    st.subheader("Quick Insights")
+    if df.empty:
+        st.info("No data available for insights.")
+        return
+
+    total_goals = int(df["Goals"].sum())
+    n_players = df["Player"].nunique()
+    n_teams = df["Team"].nunique()
+    n_divs = df["Division"].nunique()
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Goals", f"{total_goals}")
+    c2.metric("Players", f"{n_players}")
+    c3.metric("Teams", f"{n_teams}")
+    c4.metric("Divisions", f"{n_divs}")
+
+    # Top team & top scorer
+    team_tot = df.groupby("Team")["Goals"].sum().sort_values(ascending=False)
+    top_team, top_team_goals = (team_tot.index[0], int(team_tot.iloc[0])) if not team_tot.empty else ("—", 0)
+
+    scorer_tot = (df.groupby(["Player","Team"])["Goals"]
+                  .sum().sort_values(ascending=False))
+    if not scorer_tot.empty:
+        (p, t), g = scorer_tot.index[0]
+        top_player, top_player_team, top_player_goals = p, t, int(scorer_tot.iloc[0])
+    else:
+        top_player, top_player_team, top_player_goals = "—", "—", 0
+
+    st.write(
+        f"- **{scope}**: Top team **{top_team}** with **{top_team_goals}** goals."
+        f"\n- Leading scorer **{top_player}** ({top_player_team}) with **{top_player_goals}** goals."
+    )
+
+    if n_divs > 1:
+        div_share = (df.groupby("Division")["Goals"].sum()
+                     .sort_values(ascending=False)
+                     .reset_index())
+        div_share["Share %"] = (div_share["Goals"] / div_share["Goals"].sum() * 100).round(1)
+        st.write("**Division contribution (by goals):**")
+        st.dataframe(div_share, use_container_width=True, hide_index=True)
+
+def analytics_charts(df: pd.DataFrame):
+    st.subheader("Analytics")
+    if df.empty:
+        st.info("No data available for analytics.")
+        return
+
+    # Histogram of Goals per player
+    hist_df = (df.groupby(["Player"], as_index=False)["Goals"].sum()
+               .rename(columns={"Goals":"PlayerGoals"}))
+    hist = (
+        alt.Chart(hist_df)
+        .mark_bar()
+        .encode(
+            x=alt.X("PlayerGoals:Q", bin=alt.Bin(maxbins=20), axis=alt.Axis(format="d"), title="Goals (per player)"),
+            y=alt.Y("count():Q", axis=alt.Axis(format="d"), title="Number of Players"),
+            tooltip=[alt.Tooltip("PlayerGoals:Q", title="Goals", format="d"), alt.Tooltip("count():Q", title="Players")]
+        )
+        .properties(height=340, title="Distribution of Player Goals")
+    )
+
+    # Team performance: number of players vs total goals
+    team_stats = (df.groupby("Team")
+                    .agg(Total_Goals=("Goals","sum"), Player_Count=("Player","nunique"))
+                    .reset_index())
+    scatter = (
+        alt.Chart(team_stats)
+        .mark_circle(size=120)
+        .encode(
+            x=alt.X("Player_Count:Q", axis=alt.Axis(format="d"), title="Players in Team"),
+            y=alt.Y("Total_Goals:Q", axis=alt.Axis(format="d"), title="Total Goals"),
+            size=alt.Size("Total_Goals:Q", legend=None),
+            color=alt.Color("Total_Goals:Q", legend=None),
+            tooltip=["Team", alt.Tooltip("Player_Count:Q", title="Players", format="d"),
+                     alt.Tooltip("Total_Goals:Q", title="Goals", format="d")]
+        )
+        .properties(height=340, title="Team Performance: Players vs Goals")
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.altair_chart(hist, use_container_width=True)
+    with c2:
+        st.altair_chart(scatter, use_container_width=True)
+
 # ========================= App ===============================================
 def main():
     st.set_page_config(page_title="ABEER BLUESTAR SOCCER FEST 2K25", page_icon="⚽", layout="wide")
@@ -284,9 +371,12 @@ def main():
     if player_query.strip():
         tokens = [t.strip().lower() for t in player_query.split(",") if t.strip()]
         if tokens:
-            mask = False
+            # keep behavior but make mask robust for all pandas versions
+            import numpy as np
+            mask = pd.Series(False, index=filtered.index)
+            col = filtered["Player"].astype(str).str.lower()
             for t in tokens:
-                mask = mask | filtered["Player"].str.lower().str.contains(t, na=False)
+                mask = mask | col.str.contains(t, na=False)
             filtered = filtered[mask]
 
     current_players = sorted(filtered["Player"].unique().tolist())
@@ -294,8 +384,10 @@ def main():
     if players_pick:
         filtered = filtered[filtered["Player"].isin(players_pick)]
 
-    # ===== Tabs =====
-    t_overview, t_teams, t_players, t_downloads = st.tabs(["OVERVIEW", "TEAMS", "PLAYERS", "DOWNLOADS"])
+    # ===== Tabs (added QUICK INSIGHTS and ANALYTICS) =====
+    t_overview, t_quick, t_teams, t_players, t_analytics, t_downloads = st.tabs(
+        ["OVERVIEW", "QUICK INSIGHTS", "TEAMS", "PLAYERS", "ANALYTICS", "DOWNLOADS"]
+    )
 
     # ---------------------- OVERVIEW ----------------------
     with t_overview:
@@ -358,6 +450,12 @@ def main():
             st.subheader("Goals Distribution by Division")
             st.altair_chart(pie_chart(full_df), use_container_width=True)
 
+    # ---------------------- QUICK INSIGHTS ----------------------
+    with t_quick:
+        # Insights are based on CURRENT FILTERS
+        scope = "Current view" if div_sel != "All" or team_sel or player_query.strip() or players_pick else "All divisions"
+        quick_insights(filtered if scope == "Current view" else full_df, scope=scope)
+
     # ---------------------- TEAMS (Teams List) ----------------------
     with t_teams:
         st.subheader("Teams List")
@@ -404,6 +502,10 @@ def main():
                 players_list, use_container_width=True, hide_index=True,
                 column_config={"Goals": st.column_config.NumberColumn("Goals", format="%d")},
             )
+
+    # ---------------------- ANALYTICS ----------------------
+    with t_analytics:
+        analytics_charts(filtered)
 
     # ---------------------- DOWNLOADS ----------------------
     with t_downloads:
