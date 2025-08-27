@@ -1,13 +1,11 @@
-# app.py — ABEER BLUESTAR SOCCER FEST 2K25 Dashboard
-# - Centered ALL-CAPS heading
+# app.py — Football Goals Dashboard
 # - Hidden, hard-coded Google Sheets XLSX URL (no URL input shown)
 # - Refresh button with cache clear & "last refreshed" timestamp
 # - Robust XLSX parsing (no openpyxl needed)
 # - Division, Team, Player (typed search + multiselect refine)
 # - Safe Top-N logic for 0 / 1 / 2+ players
-# - Download reports (ZIP + individual CSVs, Top Scorers includes Team)
+# - Download reports (ZIP + individual CSVs)
 # - Tables hide index/serial numbers
-
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -164,9 +162,9 @@ def display_metrics(df: pd.DataFrame) -> None:
     players = df["Player"].nunique() if not df.empty else 0
     teams = df["Team"].nunique() if not df.empty else 0
     c1, c2, c3 = st.columns(3)
-    c1.metric("TOTAL GOALS", f"{total}")
-    c2.metric("NUMBER OF PLAYERS", f"{players}")
-    c3.metric("NUMBER OF TEAMS", f"{teams}")
+    c1.metric("Total Goals", f"{total}")
+    c2.metric("Number of Players", f"{players}")
+    c3.metric("Number of Teams", f"{teams}")
 
 def bar_chart(df: pd.DataFrame, category: str, value: str, title: str) -> alt.Chart:
     return (
@@ -200,6 +198,7 @@ def make_reports_zip(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
         .sum()
         .sort_values("Goals", ascending=False)
     )
+    # >>> UPDATED: include Team in top-scorers summary
     top_scorers = (
         filtered_df.groupby(["Player", "Team"], as_index=False)["Goals"]
         .sum()
@@ -219,16 +218,9 @@ def make_reports_zip(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
 # App
 # =========================
 def main():
-    # Page title in browser tab
-    st.set_page_config(page_title="ABEER BLUESTAR SOCCER FEST 2K25", page_icon="⚽", layout="wide")
-
-    # ===== Centered ALL-CAPS heading =====
-    st.markdown(
-        "<h1 style='text-align:center; margin-top:0; margin-bottom:0.25rem;'>"
-        "ABEER BLUESTAR SOCCER FEST 2K25"
-        "</h1>",
-        unsafe_allow_html=True,
-    )
+    st.set_page_config(page_title="Football Goals Dashboard", page_icon="⚽", layout="wide")
+    st.title("Football Goals Dashboard")
+    st.write("Explore goal-scoring statistics for A and B divisions.")
 
     # ---- Hidden, hard-coded Google Sheets XLSX URL ----
     XLSX_URL = (
@@ -360,7 +352,7 @@ def main():
         file_name="records_filtered.csv",
         mime="text/csv",
     )
-    # Top scorers WITH team (convenience CSV)
+    # NEW: top scorers with Team (convenience CSV)
     top_scorers_with_team = (
         filtered.groupby(["Player", "Team"], as_index=False)["Goals"]
         .sum()
