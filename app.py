@@ -1,15 +1,6 @@
 # ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard
 # Author: AI Assistant | Updated: 2025-08-28
-# What’s new in this build:
-# - Tabs bar is STICKY (frozen) — content scrolls beneath it
-# - Sidebar toggle kept visible
-# - Removed "Minimum goals per player" quick filter
-# - Player Search is a type-to-search multiselect
-# - Removed every "avg goals per player" display
-# - Fixed Altair TitleParams (fontWeight)
-# - Title shows football emoji correctly
-# - Robust World Cup trophy watermark background
-# - NEW: Player Profile Cards (inside 👤 PLAYERS tab)
+# Adds "Player Profile Cards" inside the PLAYERS tab (below ranking table)
 
 from __future__ import annotations
 
@@ -50,10 +41,7 @@ def inject_advanced_css():
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
-        :root{
-          /* Adjust this if the sticky tabs should sit a bit lower/higher */
-          --sticky-tabs-top: 52px;
-        }
+        :root{ --sticky-tabs-top: 52px; }
 
         .stApp {
             font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -69,23 +57,20 @@ def inject_advanced_css():
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.15);
             margin: 1rem auto;
-            position: relative; /* for z layering */
+            position: relative;
             z-index: 1;
         }
 
-        /* Keep header/toolbar visible so sidebar toggle shows */
         #MainMenu, footer, .stDeployButton,
         div[data-testid="stDecoration"],
-        div[data-testid="stStatusWidget"] {
-            display: none !important;
-        }
+        div[data-testid="stStatusWidget"] { display: none !important; }
 
-        /* ----- STICKY TABS (freeze the pane just below the tabs) ----- */
+        /* Sticky first tabs row */
         .block-container [data-testid="stTabs"]:first-of-type{
             position: sticky;
             top: var(--sticky-tabs-top);
-            z-index: 6;                           /* above content, below dialogs */
-            background: rgba(255,255,255,0.96);   /* frosted background */
+            z-index: 6;
+            background: rgba(255,255,255,0.96);
             backdrop-filter: blur(8px);
             border-bottom: 1px solid #e2e8f0;
             padding-top: .25rem;
@@ -94,14 +79,8 @@ def inject_advanced_css():
         }
 
         /* App title */
-        .app-title{
-            display:flex; align-items:center; justify-content:center; gap:12px;
-            margin: .75rem 0 1.0rem;
-        }
-        .app-title .ball{
-            font-size: 32px; line-height:1;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,.15));
-        }
+        .app-title{ display:flex; align-items:center; justify-content:center; gap:12px; margin: .75rem 0 1.0rem; }
+        .app-title .ball{ font-size: 32px; line-height:1; filter: drop-shadow(0 2px 4px rgba(0,0,0,.15)); }
         .app-title .title{
             font-weight:700; letter-spacing:.05em;
             font-size: clamp(22px, 3.5vw, 36px);
@@ -130,11 +109,7 @@ def inject_advanced_css():
         }
 
         /* Dataframes */
-        .stDataFrame {
-            border-radius: 15px !important;
-            overflow: hidden !important;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.08) !important;
-        }
+        .stDataFrame { border-radius: 15px !important; overflow: hidden !important; box-shadow: 0 8px 32px rgba(0,0,0,0.08) !important; }
 
         /* Metric cards */
         .metric-container {
@@ -153,42 +128,21 @@ def inject_advanced_css():
         .status-warn{ background:#fef9c3; border-left:4px solid #f59e0b; color:#713f12; }
         .status-err { background:#fee2e2; border-left:4px solid #ef4444; color:#7f1d1d; }
 
-        /* ===== Player profile cards (NEW) ===== */
-        .player-grid{
-          display:grid; gap:16px;
-          grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-          margin-top: .5rem;
-        }
-        .player-card{
-          background:#0f172a; color:#e2e8f0;
-          border-radius:16px; overflow:hidden;
-          box-shadow:0 10px 24px rgba(2,6,23,.35);
-          border:1px solid rgba(148,163,184,.15);
-        }
-        .pc-top{ display:grid; grid-template-columns:120px 1fr; gap:16px; padding:16px; align-items:center;}
-        .pc-fig{
-          background:#d9e6a5; height:120px; border-radius:12px;
-          display:flex; align-items:center; justify-content:center; color:#0f172a; font-weight:700;
-        }
-        .pc-name{ font-size:1.1rem; font-weight:700; letter-spacing:.03em; }
-        .pc-sub{ opacity:.85; font-size:.85rem; }
-        .pc-body{ padding:16px; border-top:1px solid rgba(148,163,184,.15);}
-        .pc-row{ display:flex; align-items:center; gap:10px; margin:.4rem 0;}
-        .pc-label{ width:140px; font-size:.82rem; opacity:.85;}
-        .pc-bar{
-          flex:1; height:16px; background:#1f2937; border-radius:10px; overflow:hidden; position:relative;
-          border:1px solid rgba(148,163,184,.12);
-        }
-        .pc-bar > span{
-          display:block; height:100%; background:linear-gradient(90deg,#f97316,#ef4444);
-          width:var(--pct,0%); transition:width .4s ease;
-        }
-        .pc-num{ width:54px; text-align:right; font-variant-numeric:tabular-nums; }
-        .pc-footer{ display:flex; gap:8px; padding:12px 16px 16px; flex-wrap:wrap; }
-        .pc-pill{
-          background:#111827; color:#fbbf24; border:1px dashed rgba(251,191,36,.35);
-          padding:.25rem .5rem; border-radius:999px; font-size:.75rem;
-        }
+        /* -------- Player Profile Cards -------- */
+        .player-grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));margin-top:.5rem}
+        .player-card{background:#0f172a;color:#e2e8f0;border-radius:16px;overflow:hidden;box-shadow:0 10px 24px rgba(2,6,23,.35);border:1px solid rgba(148,163,184,.15)}
+        .pc-top{display:grid;grid-template-columns:120px 1fr;gap:16px;padding:16px;align-items:center}
+        .pc-fig{background:#d9e6a5;height:120px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#0f172a;font-weight:700}
+        .pc-name{font-size:1.1rem;font-weight:700;letter-spacing:.03em}
+        .pc-sub{opacity:.85;font-size:.85rem}
+        .pc-body{padding:16px;border-top:1px solid rgba(148,163,184,.15)}
+        .pc-row{display:flex;align-items:center;gap:10px;margin:.4rem 0}
+        .pc-label{width:140px;font-size:.82rem;opacity:.85}
+        .pc-bar{flex:1;height:16px;background:#1f2937;border-radius:10px;overflow:hidden;position:relative;border:1px solid rgba(148,163,184,.12)}
+        .pc-bar>span{display:block;height:100%;background:linear-gradient(90deg,#f97316,#ef4444);width:var(--pct,0%);transition:width .4s ease}
+        .pc-num{width:54px;text-align:right;font-variant-numeric:tabular-nums}
+        .pc-footer{display:flex;gap:8px;padding:12px 16px 16px;flex-wrap:wrap}
+        .pc-pill{background:#111827;color:#fbbf24;border:1px dashed rgba(251,191,36,.35);padding:.25rem .5rem;border-radius:999px;font-size:.75rem}
 
         @media (max-width: 768px) {
             .block-container { padding: 1rem .5rem; margin: .5rem; width: 95vw; max-width: 95vw; }
@@ -263,7 +217,7 @@ def add_world_cup_watermark(*, image_path: str | None = None,
         background-size: {size};
         opacity: {opacity};
         pointer-events: none;
-        z-index: 0; /* below content; .block-container has z-index:1 */
+        z-index: 0;
       }}
     </style>
     <div id="wc-trophy"></div>
@@ -507,7 +461,7 @@ def create_advanced_scatter_plot(df: pd.DataFrame):
 
     team_stats = df.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Goals=("Goals", "sum")).reset_index()
 
-    if PLOTLY_AVAILABLE and px is not None:
+    if PLOTLY_AVAILABLE:
         fig = px.scatter(
             team_stats, x="Players", y="Goals", color="Division", size="Goals",
             hover_name="Team", hover_data={"Players": True, "Goals": True},
@@ -819,7 +773,7 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 help="Download ZIP containing all data, summaries, and analytics",
             )
 
-# ====================== NEW: PLAYER PROFILE HELPERS ===============
+# ====================== PLAYER CARD HELPERS =======================
 def _safe_int(x, default=0):
     try:
         if pd.isna(x):
@@ -829,20 +783,13 @@ def _safe_int(x, default=0):
         return default
 
 def build_player_profiles(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Build one row per player with totals plus optional extras (if such columns exist).
-    Works with your current schema (Division, Team, Player, Goals).
-    """
+    """Builds one row per player with optional columns: Appearances, Yellow, Red, Shirt, Age, Awards."""
     if df.empty:
         return pd.DataFrame(columns=["Player","Team","Division","Goals","Appearances","Yellow","Red","Shirt","Age","Awards"])
-
-    # core goals per player/team/division
     core = (
         df.groupby(["Player","Team","Division"])["Goals"]
         .sum().reset_index().rename(columns={"Goals":"Goals"})
     )
-
-    # Optional columns
     optional_cols = ["Appearances","Yellow","Red","Shirt","Age","Awards"]
     present = [c for c in optional_cols if c in df.columns]
     if present:
@@ -854,68 +801,43 @@ def build_player_profiles(df: pd.DataFrame) -> pd.DataFrame:
         out = core.merge(extras, on=["Player","Team","Division"], how="left")
     else:
         out = core.copy()
-        out["Appearances"] = 0
-        out["Yellow"] = 0
-        out["Red"] = 0
-        out["Shirt"] = "—"
-        out["Age"] = "—"
-        out["Awards"] = None
+        out["Appearances"]=0; out["Yellow"]=0; out["Red"]=0; out["Shirt"]="—"; out["Age"]="—"; out["Awards"]=None
 
-    # Clean/types
-    out["Appearances"] = out["Appearances"].apply(_safe_int)
-    out["Yellow"] = out["Yellow"].apply(_safe_int)
-    out["Red"] = out["Red"].apply(_safe_int)
-    out["Shirt"] = out["Shirt"].apply(lambda x: "—" if pd.isna(x) or str(x).strip()=="" else str(x).strip())
-    out["Age"] = out["Age"].apply(lambda x: "—" if pd.isna(x) or str(x).strip()=="" else str(x).strip())
-
-    # Normalize awards to list
     def _awards_to_list(x):
         if pd.isna(x) or x in [None, "", "nan", "None"]:
             return []
-        if isinstance(x, list):
-            return [str(a).strip() for a in x if str(a).strip()]
+        if isinstance(x, list): return [str(a).strip() for a in x if str(a).strip()]
         return [s.strip() for s in str(x).split(",") if s.strip()]
-    out["Awards"] = out["Awards"].apply(_awards_to_list)
 
-    out = out.sort_values(["Goals","Player"], ascending=[False, True]).reset_index(drop=True)
-    return out
+    out["Appearances"]=out["Appearances"].apply(_safe_int)
+    out["Yellow"]=out["Yellow"].apply(_safe_int)
+    out["Red"]=out["Red"].apply(_safe_int)
+    out["Shirt"]=out["Shirt"].apply(lambda v: "—" if pd.isna(v) or str(v).strip()=="" else str(v).strip())
+    out["Age"]=out["Age"].apply(lambda v: "—" if pd.isna(v) or str(v).strip()=="" else str(v).strip())
+    out["Awards"]=out["Awards"].apply(_awards_to_list)
+    return out.sort_values(["Goals","Player"], ascending=[False, True]).reset_index(drop=True)
 
 def render_player_cards(profiles: pd.DataFrame):
-    """
-    Render responsive player cards. Bars scale to current filtered maxima.
-    """
     if profiles.empty:
         st.info("🔍 No players to show for current filters.")
         return
-
     max_goals = max(1, int(profiles["Goals"].max()))
-    max_apps  = max(1, int(profiles["Appearances"].max() if "Appearances" in profiles else 0))
-    max_y     = max(1, int(profiles["Yellow"].max() if "Yellow" in profiles else 0))
-    max_r     = max(1, int(profiles["Red"].max() if "Red" in profiles else 0))
-
-    def pct(v, m):
-        v = _safe_int(v, 0); m = max(1, _safe_int(m, 1))
-        return f"{int(round(100 * v / m))}%"
+    max_apps  = max(1, int(profiles["Appearances"].max()))
+    max_y     = max(1, int(profiles["Yellow"].max()))
+    max_r     = max(1, int(profiles["Red"].max()))
+    pct = lambda v, m: f"{int(round(100 * _safe_int(v,0) / max(1,_safe_int(m,1))))}%"
 
     cards = ["<div class='player-grid'>"]
     for _, row in profiles.iterrows():
-        name = str(row["Player"])
-        team = str(row["Team"])
-        division = str(row["Division"])
-
-        shirt = row.get("Shirt", "—") or "—"
-        age   = row.get("Age", "—") or "—"
-
-        g = _safe_int(row.get("Goals", 0));   g_pct = pct(g, max_goals)
-        a = _safe_int(row.get("Appearances", 0)); a_pct = pct(a, max_apps)
-        y = _safe_int(row.get("Yellow", 0));  y_pct = pct(y, max_y)
-        r = _safe_int(row.get("Red", 0));     r_pct = pct(r, max_r)
-
-        awards = row.get("Awards", [])
-        if not isinstance(awards, list): awards = []
+        name=row["Player"]; team=row["Team"]; division=row["Division"]
+        shirt=row.get("Shirt","—") or "—"; age=row.get("Age","—") or "—"
+        g=_safe_int(row.get("Goals",0)); a=_safe_int(row.get("Appearances",0))
+        y=_safe_int(row.get("Yellow",0)); r=_safe_int(row.get("Red",0))
+        awards=row.get("Awards",[])
+        if not isinstance(awards, list): awards=[]
         awards_html = " ".join([f"<span class='pc-pill'>{aw}</span>" for aw in awards]) or "<span class='pc-pill' style='opacity:.7;'>No awards</span>"
 
-        html = f"""
+        cards.append(f"""
         <div class="player-card">
           <div class="pc-top">
             <div class="pc-fig">#{shirt}</div>
@@ -925,33 +847,14 @@ def render_player_cards(profiles: pd.DataFrame):
             </div>
           </div>
           <div class="pc-body">
-            <div class="pc-row">
-              <div class="pc-label">Goals</div>
-              <div class="pc-bar"><span style="--pct:{g_pct}"></span></div>
-              <div class="pc-num">{g}</div>
-            </div>
-            <div class="pc-row">
-              <div class="pc-label">Appearances</div>
-              <div class="pc-bar"><span style="--pct:{a_pct}"></span></div>
-              <div class="pc-num">{a}</div>
-            </div>
-            <div class="pc-row">
-              <div class="pc-label">Yellow Cards</div>
-              <div class="pc-bar"><span style="--pct:{y_pct}"></span></div>
-              <div class="pc-num">{y}</div>
-            </div>
-            <div class="pc-row">
-              <div class="pc-label">Red Cards</div>
-              <div class="pc-bar"><span style="--pct:{r_pct}"></span></div>
-              <div class="pc-num">{r}</div>
-            </div>
+            <div class="pc-row"><div class="pc-label">Goals</div><div class="pc-bar"><span style="--pct:{pct(g,max_goals)}"></span></div><div class="pc-num">{g}</div></div>
+            <div class="pc-row"><div class="pc-label">Appearances</div><div class="pc-bar"><span style="--pct:{pct(a,max_apps)}"></span></div><div class="pc-num">{a}</div></div>
+            <div class="pc-row"><div class="pc-label">Yellow Cards</div><div class="pc-bar"><span style="--pct:{pct(y,max_y)}"></span></div><div class="pc-num">{y}</div></div>
+            <div class="pc-row"><div class="pc-label">Red Cards</div><div class="pc-bar"><span style="--pct:{pct(r,max_r)}"></span></div><div class="pc-num">{r}</div></div>
           </div>
-          <div class="pc-footer">
-            {awards_html}
-          </div>
+          <div class="pc-footer">{awards_html}</div>
         </div>
-        """
-        cards.append(html)
+        """)
     cards.append("</div>")
     st.markdown("\n".join(cards), unsafe_allow_html=True)
 
@@ -967,7 +870,6 @@ def main():
 </div>
 """, unsafe_allow_html=True)
 
-    # Trophy background (URL or local file)
     add_world_cup_watermark(
         image_url="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f3c6.svg",
         opacity=0.10,
@@ -994,7 +896,6 @@ def main():
         st.caption(f"🕒 Last refreshed: {last_refresh}")
         st.divider()
 
-        # Load data
         with st.spinner("📡 Loading tournament data…"):
             tournament_data = fetch_tournament_data(GOOGLE_SHEETS_URL)
 
@@ -1006,13 +907,11 @@ def main():
 
         st.header("🔍 Data Filters")
 
-        # Division filter
         division_options = ["All Divisions"] + sorted(tournament_data["Division"].unique().tolist())
         selected_division = st.selectbox("📊 Division", division_options, key="division_filter")
         if selected_division != "All Divisions":
             tournament_data = tournament_data[tournament_data["Division"] == selected_division]
 
-        # Team filter
         available_teams = sorted(tournament_data["Team"].unique().tolist())
         selected_teams = st.multiselect(
             "🏆 Teams (optional)",
@@ -1024,7 +923,6 @@ def main():
         if selected_teams:
             tournament_data = tournament_data[tournament_data["Team"].isin(selected_teams)]
 
-        # Player search (type-to-search list)
         st.subheader("👤 Player Search")
         player_names = sorted(tournament_data["Player"].dropna().astype(str).unique().tolist())
         selected_players = st.multiselect(
@@ -1038,7 +936,7 @@ def main():
         if selected_players:
             tournament_data = tournament_data[tournament_data["Player"].isin(selected_players)]
 
-    # Tabs (this first tabs block is sticky via CSS above)
+    # Tabs (first tabs row is sticky via CSS)
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         ["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📥 DOWNLOADS"]
     )
@@ -1115,7 +1013,7 @@ def main():
             if not team_analysis.empty:
                 st.altair_chart(create_horizontal_bar_chart(team_analysis.head(15), "Goals", "Team", "Team Goals Distribution", "viridis"), use_container_width=True)
 
-    # TAB 4
+    # TAB 4 — Players (kept your reports; added Card View below)
     with tab4:
         st.header("👤 Players Analysis")
         if tournament_data.empty:
@@ -1144,11 +1042,11 @@ def main():
                 st.metric("👥 Players with 2+ Goals", int((player_goals >= 2).sum()))
                 st.metric("⚽ Single Goal Scorers", int((player_goals == 1).sum()))
 
-            # ---- NEW: Card view under existing sections ----
+            # -------- NEW: Player Profile Cards --------
             st.divider()
             st.subheader("📇 Player Profiles (Card View)")
             profiles_df = build_player_profiles(tournament_data)
-            # Optional quick filters for the card grid:
+
             colf1, colf2 = st.columns([2,1])
             with colf1:
                 q = st.text_input("🔎 Search player name (contains)", "")
@@ -1158,6 +1056,8 @@ def main():
                 profiles_df = profiles_df[profiles_df["Player"].str.contains(q, case=False, na=False)]
             if min_goals > 0:
                 profiles_df = profiles_df[profiles_df["Goals"] >= min_goals]
+
+            st.caption(f"Rendering **{len(profiles_df)}** player cards")
             render_player_cards(profiles_df)
 
     # TAB 5
