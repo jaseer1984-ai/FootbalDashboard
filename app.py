@@ -9,6 +9,7 @@
 # - Fixed Altair TitleParams (fontWeight)
 # - Title shows football emoji correctly
 # - Robust World Cup trophy watermark background
+# - ✅ Players tab now renders WHITE CARD VIEW (no table)
 
 from __future__ import annotations
 
@@ -151,6 +152,35 @@ def inject_advanced_css():
         .status-ok  { background:#ecfeff; border-left:4px solid #06b6d4; color:#155e75; }
         .status-warn{ background:#fef9c3; border-left:4px solid #f59e0b; color:#713f12; }
         .status-err { background:#fee2e2; border-left:4px solid #ef4444; color:#7f1d1d; }
+
+        /* ===== PLAYER CARDS (scoped styles; white cards) ===== */
+        .players-grid{
+            display:grid;
+            gap:16px;
+            grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
+            margin-top:.5rem;
+        }
+        .pcard{
+            background:#ffffff;
+            color:#1e293b;
+            border-radius:16px;
+            padding:16px 16px 12px 16px;
+            border:1px solid #e5e7eb;
+            box-shadow:0 4px 12px rgba(0,0,0,.08);
+        }
+        .pcard h3{ margin:0 0 8px 0; font-size:1.15rem; line-height:1.35; font-weight:700; color:#111827; }
+        .pcard .sub{ font-size:.9rem; color:#475569; }
+        .pcard .muted{ color:#94a3b8; font-size:.9rem; margin:.15rem 0 .25rem; }
+
+        .pcard .row{ display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px; margin:.5rem 0; }
+        .pcard .label{ font-size:.9rem; color:#334155; white-space:nowrap; }
+        .pcard .dotbar{ position:relative; height:10px; border-radius:999px; background:#f1f5f9; border:1px solid #e2e8f0; overflow:hidden; }
+        .pcard .dotbar>span{ position:absolute; inset:0; width:var(--pct,0%); height:100%;
+            background:linear-gradient(90deg,#3b82f6,#06b6d4); transition:width .4s ease; }
+        .pcard .num{ width:32px; text-align:right; font-variant-numeric:tabular-nums; color:#111827; }
+
+        .pcard .pill{ display:inline-block; margin-top:.5rem; padding:.25rem .55rem; border-radius:9999px; font-size:.75rem;
+            background:#f8fafc; color:#0f172a; border:1px dashed #94a3b8; }
 
         @media (max-width: 768px) {
             .block-container { padding: 1rem .5rem; margin: .5rem; width: 95vw; max-width: 95vw; }
@@ -781,6 +811,70 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 help="Download ZIP containing all data, summaries, and analytics",
             )
 
+# ============ NEW: Player Cards HTML (white background) ============
+def build_player_cards_html(df: pd.DataFrame) -> str:
+    """
+    Render white player cards showing total goals per player in current filtered view.
+    """
+    if df.empty:
+        return "<p>No players match current filters.</p>"
+
+    agg = (
+        df.groupby(["Player", "Team", "Division"])["Goals"]
+        .sum()
+        .reset_index()
+        .sort_values(["Goals", "Player"], ascending=[False, True])
+        .reset_index(drop=True)
+    )
+
+    max_goals = max(1, int(agg["Goals"].max()))
+    parts = ['<div class="players-grid">']
+    for _, r in agg.iterrows():
+        name = str(r["Player"]).strip()
+        team = str(r["Team"]).strip()
+        division = str(r["Division"]).strip()
+        goals = int(r["Goals"])
+        pct = int(round(goals / max_goals * 100))
+
+        parts.append(
+            f"""
+            <div class="pcard">
+              <h3>{name}</h3>
+              <div class="sub">{team} • {division} • Age —</div>
+              <div class="muted">—</div>
+
+              <div class="row">
+                <div class="label">⚽ Goals</div>
+                <div class="dotbar"><span style="--pct:{pct}%"></span></div>
+                <div class="num">{goals}</div>
+              </div>
+
+              <div class="row">
+                <div class="label">👕 Appearances</div>
+                <div class="dotbar"><span style="--pct:0%"></span></div>
+                <div class="num">0</div>
+              </div>
+
+              <div class="row">
+                <div class="label">🟨 Yellow Cards</div>
+                <div class="dotbar"><span style="--pct:0%"></span></div>
+                <div class="num">0</div>
+              </div>
+
+              <div class="row">
+                <div class="label">🟥 Red Cards</div>
+                <div class="dotbar"><span style="--pct:0%"></span></div>
+                <div class="num">0</div>
+              </div>
+
+              <span class="pill">No awards</span>
+            </div>
+            """
+        )
+
+    parts.append("</div>")
+    return "\n".join(parts)
+
 # ====================== MAIN APPLICATION ==========================
 def main():
     inject_advanced_css()
@@ -941,34 +1035,15 @@ def main():
             if not team_analysis.empty:
                 st.altair_chart(create_horizontal_bar_chart(team_analysis.head(15), "Goals", "Team", "Team Goals Distribution", "viridis"), use_container_width=True)
 
-    # TAB 4
+    # TAB 4  =======>  WHITE PLAYER CARDS (no table)
     with tab4:
-        st.header("👤 Players Analysis")
+        st.header("👤 Player Profiles")
         if tournament_data.empty:
             st.info("🔍 No players match your current filters.")
         else:
-            st.subheader("📋 Players Ranking")
-            create_enhanced_data_table(tournament_data, "players")
-            st.divider()
-            c1, c2 = st.columns(2)
-            with c1:
-                st.subheader("🥇 Top Scorers by Division")
-                for division in tournament_data["Division"].unique():
-                    div_data = tournament_data[tournament_data["Division"] == division]
-                    div_top = div_data.groupby(["Player", "Team"])["Goals"].sum().reset_index().sort_values("Goals", ascending=False).head(5)
-                    st.write(f"**{division}**")
-                    if not div_top.empty:
-                        for _, row in div_top.iterrows():
-                            st.write(f"• {row['Player']} ({row['Team']}) — {int(row['Goals'])} goals")
-                    else:
-                        st.write("• No players found")
-                    st.write("")
-            with c2:
-                st.subheader("📊 Player Statistics")
-                player_goals = tournament_data.groupby(["Player", "Team"])["Goals"].sum()
-                st.metric("🎯 Highest Individual Score", int(player_goals.max()) if not player_goals.empty else 0)
-                st.metric("👥 Players with 2+ Goals", int((player_goals >= 2).sum()))
-                st.metric("⚽ Single Goal Scorers", int((player_goals == 1).sum()))
+            st.caption("Cards reflect total goals per player in the current filtered view.")
+            cards = build_player_cards_html(tournament_data)
+            st.markdown(cards, unsafe_allow_html=True)
 
     # TAB 5
     with tab5:
