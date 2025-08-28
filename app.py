@@ -803,28 +803,14 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
 
 # ============ NEW: Player Cards HTML (white background) ============
 def build_player_cards_html(df: pd.DataFrame) -> str:
-    """Render white player cards showing total goals per player in current filtered view."""
-    if df.empty:
-        return "<p>No players match current filters.</p>"
-
-    agg = (
-        df.groupby(["Player", "Team", "Division"])["Goals"]
-          .sum()
-          .reset_index()
-          .sort_values(["Goals", "Player"], ascending=[False, True])
-          .reset_index(drop=True)
-    )
-    max_goals = max(1, int(agg["Goals"].max()))
-    html = ['<div class="players-grid">']
-    for _, r in agg.iterrows():
-        name, team, division = str(r["Player"]).strip(), str(r["Team"]).strip(), str(r["Division"]).strip()
-        goals = int(r["Goals"]); pct = int(round(goals / max_goals * 100))
+    ...
+    html = ['<div class="players-grid">']   # <— grid wrapper
+    for ..., r in agg.iterrows():
         html.append(f"""
         <div class="pcard">
           <h3>{name}</h3>
           <div class="sub">{team} • {division} • Age —</div>
           <div class="muted">—</div>
-
           <div class="row">
             <div class="label">⚽ Goals</div>
             <div class="dotbar"><span style="--pct:{pct}%"></span></div>
@@ -833,11 +819,11 @@ def build_player_cards_html(df: pd.DataFrame) -> str:
           <div class="row"><div class="label">👕 Appearances</div><div class="dotbar"><span style="--pct:0%"></span></div><div class="num">0</div></div>
           <div class="row"><div class="label">🟨 Yellow Cards</div><div class="dotbar"><span style="--pct:0%"></span></div><div class="num">0</div></div>
           <div class="row"><div class="label">🟥 Red Cards</div><div class="dotbar"><span style="--pct:0%"></span></div><div class="num">0</div></div>
-
           <span class="pill">No awards</span>
         </div>""")
     html.append("</div>")
     return "\n".join(html)
+
 
 
 # ====================== MAIN APPLICATION ==========================
@@ -1001,14 +987,15 @@ def main():
                 st.altair_chart(create_horizontal_bar_chart(team_analysis.head(15), "Goals", "Team", "Team Goals Distribution", "viridis"), use_container_width=True)
 
     # TAB 4  =======>  WHITE PLAYER CARDS (no table)
-    with tab4:
-        st.header("👤 Player Profiles")
-        if tournament_data.empty:
-            st.info("🔍 No players match your current filters.")
-        else:
-            st.caption("Cards reflect total goals per player in the current filtered view.")
-            cards = build_player_cards_html(tournament_data)
-            st.markdown(cards, unsafe_allow_html=True)
+   with tab4:
+    st.header("👤 Player Profiles")
+    if tournament_data.empty:
+        st.info("🔍 No players match your current filters.")
+    else:
+        st.caption("Cards reflect total goals per player in the current filtered view.")
+        cards_html = build_player_cards_html(tournament_data)
+        st.markdown(cards_html, unsafe_allow_html=True)  # <— important
+
 
     # TAB 5
     with tab5:
@@ -1062,4 +1049,5 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
         st.exception(e)
+
 
