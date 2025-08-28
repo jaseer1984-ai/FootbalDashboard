@@ -1,13 +1,14 @@
 # ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard
 # Author: AI Assistant | Updated: 2025-08-28
-# Notes:
-# - Sidebar toggle works (header visible)
+# Changes:
+# - Sidebar toggle visible (header not hidden)
 # - Removed "Quick Filters → Minimum goals per player"
-# - Player Search = type-to-search multiselect of names
-# - Removed every "avg goals per player" display (cards/insights/players/analytics)
-# - Removed "Active Filters Summary" block and footer text
+# - Player Search = type-to-search multiselect
+# - Removed every "avg goals per player" display
+# - Removed Active Filters Summary & footer text
 # - Fixed Altair TitleParams (fontWeight)
-# - Fixed title so the football icon renders (emoji split from gradient text)
+# - Title shows football emoji correctly
+# - Added World Cup trophy watermark background
 
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ import xml.etree.ElementTree as ET
 from io import BytesIO
 import requests
 from datetime import datetime
+import base64  # for optional local trophy image
 
 # Optional imports with fallbacks
 PLOTLY_AVAILABLE = False
@@ -37,7 +39,7 @@ st.set_page_config(
     page_title="ABEER BLUESTAR SOCCER FEST 2K25",
     page_icon="⚽",
     layout="wide",
-    initial_sidebar_state="expanded",  # keep sidebar toggle visible in header
+    initial_sidebar_state="expanded",
 )
 
 # ====================== STYLING ===================================
@@ -174,6 +176,41 @@ def inject_advanced_css():
 def notify(msg: str, kind: str = "ok"):
     cls = {"ok": "status-ok", "warn": "status-warn", "err": "status-err"}.get(kind, "status-ok")
     st.markdown(f'<div class="status-pill {cls}">{msg}</div>', unsafe_allow_html=True)
+
+# ---------- Trophy watermark ----------
+def add_world_cup_watermark(*, image_path: str | None = None,
+                            image_url: str | None = None,
+                            opacity: float = 0.08,
+                            size: str = "min(70vw, 900px)"):
+    """
+    Shows a big, faint trophy behind the app.
+    - image_path: local 'assets/trophy.png' (recommended)
+    - image_url:  remote image (SVG/PNG)
+    """
+    if image_path:
+        ext = "svg+xml" if image_path.lower().endswith(".svg") else "png"
+        b64 = base64.b64encode(Path(image_path).read_bytes()).decode()
+        bg = f"url('data:image/{ext};base64,{b64}')"
+    elif image_url:
+        bg = f"url('{image_url}')"
+    else:
+        bg = "url('https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f3c6.svg')"  # Trophy emoji SVG
+
+    st.markdown(f"""
+    <style>
+      .stApp:before {{
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: {bg} no-repeat center center fixed;
+        background-size: {size};
+        opacity: {opacity};
+        pointer-events: none;
+        z-index: 0;
+      }}
+      .block-container {{ position: relative; z-index: 1; }}
+    </style>
+    """, unsafe_allow_html=True)
 
 # ====================== DATA PROCESSING ===========================
 def parse_xlsx_without_dependencies(file_bytes: bytes) -> pd.DataFrame:
@@ -388,7 +425,6 @@ def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
 
     division_data = df.groupby("Division")["Goals"].sum().reset_index()
-
     sel = alt.selection_single(fields=["Division"], empty="none")
 
     base = (
@@ -775,6 +811,15 @@ def main():
 </div>
 """, unsafe_allow_html=True)
 
+    # Add faint World Cup trophy in the background (use URL or your local path)
+    add_world_cup_watermark(
+        image_url="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f3c6.svg",
+        opacity=0.08,
+        size="min(65vw, 880px)"
+    )
+    # Alternatively, if you store a local file:
+    # add_world_cup_watermark(image_path="assets/trophy.png", opacity=0.07, size="min(65vw, 880px)")
+
     GOOGLE_SHEETS_URL = (
         "https://docs.google.com/spreadsheets/d/e/"
         "2PACX-1vRpCD-Wh_NnGQjJ1Mh3tuU5Mdcl8TK41JopMUcSnfqww8wkPXKKgRyg7v4sC_vuUw/pub?output=xlsx"
@@ -837,9 +882,6 @@ def main():
         )
         if selected_players:
             tournament_data = tournament_data[tournament_data["Player"].isin(selected_players)]
-
-        # Quick Filters (min goals per player) — removed
-        # Active Filters Summary — removed
 
     # Tabs
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📥 DOWNLOADS"])
