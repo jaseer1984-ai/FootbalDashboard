@@ -1,6 +1,6 @@
 # ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard
 # Author: AI Assistant | Updated: 2025-08-28
-# Players tab now uses light profile-card grid (no table)
+# Players tab now uses light profile-card grid with fixed bar scale (0/50/100)
 
 from __future__ import annotations
 
@@ -63,7 +63,6 @@ def inject_advanced_css():
             z-index: 1;
         }
 
-        /* Hide Streamlit chrome but keep sidebar toggle available */
         #MainMenu, footer, .stDeployButton,
         div[data-testid="stDecoration"],
         div[data-testid="stStatusWidget"] { display: none !important; }
@@ -137,7 +136,7 @@ def inject_advanced_css():
         .status-warn{ background:#fef9c3; border-left:4px solid #f59e0b; color:#713f12; }
         .status-err { background:#fee2e2; border-left:4px solid #ef4444; color:#7f1d1d; }
 
-        /* -------- Light Player Cards (new) -------- */
+        /* -------- Light Player Cards -------- */
         .player-grid{
             display:grid;
             grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
@@ -157,9 +156,7 @@ def inject_advanced_css():
             font-size:1.35rem;
             line-height:1.2;
         }
-        .pcard .sub{
-            color:#4b5563; font-size:.95rem; margin-bottom:.25rem;
-        }
+        .pcard .sub{ color:#4b5563; font-size:.95rem; margin-bottom:.25rem; }
         .pcard .muted{ color:#9ca3af; font-size:.9rem; margin-bottom:.5rem; }
         .pcard .row{ display:flex; align-items:center; gap:10px; margin:.45rem 0; }
         .pcard .label{ min-width:132px; color:#111827; }
@@ -697,7 +694,7 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "records"):
             },
         )
 
-# -------- NEW: render light player cards (replaces table in Players tab) --------
+# -------- Player cards (exact model, fixed 0/50/100 bar) --------
 def render_player_cards(df: pd.DataFrame, max_players: int | None = None):
     if df.empty:
         st.info("No players match your current filters.")
@@ -712,15 +709,20 @@ def render_player_cards(df: pd.DataFrame, max_players: int | None = None):
     if max_players:
         players = players.head(max_players)
 
-    # Build grid HTML
     cards_html = ['<div class="player-grid">']
     for _, r in players.iterrows():
         name = str(r["Player"])
         team = str(r["Team"])
         division = str(r["Division"])
         goals = int(r["Goals"])
-        # width percentage for the orange bar: cap at 100 for >5 goals
-        pct = min(100, int(round((goals / max(1, players["Goals"].max())) * 100)))
+
+        # Fixed mapping to match your model: 0→0%, 1→50%, 2+→100%
+        if goals <= 0:
+            pct = 0
+        elif goals == 1:
+            pct = 50
+        else:
+            pct = 100
 
         card = f"""
         <div class="pcard">
@@ -914,7 +916,7 @@ def main():
         if selected_teams:
             tournament_data = tournament_data[tournament_data["Team"].isin(selected_teams)]
 
-        # Player search (type-to-search list)
+        # Player search
         st.subheader("👤 Player Search")
         player_names = sorted(tournament_data["Player"].dropna().astype(str).unique().tolist())
         selected_players = st.multiselect(
@@ -928,7 +930,7 @@ def main():
         if selected_players:
             tournament_data = tournament_data[tournament_data["Player"].isin(selected_players)]
 
-    # Tabs (sticky)
+    # Tabs
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         ["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📥 DOWNLOADS"]
     )
@@ -1005,10 +1007,10 @@ def main():
             if not team_analysis.empty:
                 st.altair_chart(create_horizontal_bar_chart(team_analysis.head(15), "Goals", "Team", "Team Goals Distribution", "viridis"), use_container_width=True)
 
-    # TAB 4  ————— REPLACED TABLE WITH CARD GRID —————
+    # TAB 4 — Player card grid (no table)
     with tab4:
         st.header("👤 Player Profiles")
-        render_player_cards(tournament_data)  # 👈 new card grid, no table
+        render_player_cards(tournament_data)
 
     # TAB 5
     with tab5:
