@@ -1,27 +1,28 @@
 # ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard
 # Author: AI Assistant | Updated: 2025-08-28
-# Changes in this build:
+# What’s new in this build:
+# - Tabs bar is STICKY (frozen) — content scrolls beneath it
 # - Sidebar toggle kept visible
 # - Removed "Minimum goals per player" quick filter
 # - Player Search is a type-to-search multiselect
 # - Removed every "avg goals per player" display
-# - Removed Active Filters Summary & footer text
 # - Fixed Altair TitleParams (fontWeight)
 # - Title shows football emoji correctly
-# - Added a reliable World Cup trophy watermark background (works even if :before is ignored)
+# - Robust World Cup trophy watermark background
 
 from __future__ import annotations
 
-import streamlit as st
-import pandas as pd
-import altair as alt
-from pathlib import Path
-import zipfile
-import xml.etree.ElementTree as ET
-from io import BytesIO
-import requests
-from datetime import datetime
 import base64
+from datetime import datetime
+from io import BytesIO
+from pathlib import Path
+import xml.etree.ElementTree as ET
+import zipfile
+
+import altair as alt
+import pandas as pd
+import requests
+import streamlit as st
 
 # Optional imports with fallbacks
 PLOTLY_AVAILABLE = False
@@ -48,6 +49,11 @@ def inject_advanced_css():
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
+        :root{
+          /* Adjust this if the sticky tabs should sit a bit lower/higher */
+          --sticky-tabs-top: 52px;
+        }
+
         .stApp {
             font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -62,7 +68,7 @@ def inject_advanced_css():
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.15);
             margin: 1rem auto;
-            position: relative;   /* keeps our content above the watermark */
+            position: relative; /* for z layering */
             z-index: 1;
         }
 
@@ -73,10 +79,23 @@ def inject_advanced_css():
             display: none !important;
         }
 
-        /* App title (split icon + gradient text so emoji renders properly) */
+        /* ----- STICKY TABS (freeze the pane just below the tabs) ----- */
+        .block-container [data-testid="stTabs"]:first-of-type{
+            position: sticky;
+            top: var(--sticky-tabs-top);
+            z-index: 6;                           /* above content, below dialogs */
+            background: rgba(255,255,255,0.96);   /* frosted background */
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid #e2e8f0;
+            padding-top: .25rem;
+            padding-bottom: .25rem;
+            margin-top: .25rem;
+        }
+
+        /* App title */
         .app-title{
             display:flex; align-items:center; justify-content:center; gap:12px;
-            margin: .75rem 0 1.5rem;
+            margin: .75rem 0 1.0rem;
         }
         .app-title .ball{
             font-size: 32px; line-height:1;
@@ -182,17 +201,9 @@ def notify(msg: str, kind: str = "ok"):
 def add_world_cup_watermark(*, image_path: str | None = None,
                             image_url: str | None = None,
                             opacity: float = 0.08,
-                            size: str = "70vmin",
-                            y_offset: str = "8vh"):
-    """
-    Shows a big, faint trophy behind the whole app.
-    Uses a fixed-position <div> so it works across Streamlit versions.
-    - image_path: local file (e.g., 'assets/trophy.png' or '.svg')
-    - image_url:  remote image
-    - opacity:    0.03–0.15 looks good
-    - size:       CSS length (e.g., '70vmin', '800px', '65vw')
-    - y_offset:   vertical offset (e.g., '8vh', '0')
-    """
+                            size: str = "68vmin",
+                            y_offset: str = "6vh"):
+    """Shows a big, faint trophy behind the whole app."""
     if image_path:
         ext = "svg+xml" if image_path.lower().endswith(".svg") else "png"
         b64 = base64.b64encode(Path(image_path).read_bytes()).decode()
@@ -200,7 +211,6 @@ def add_world_cup_watermark(*, image_path: str | None = None,
     elif image_url:
         bg = f"url('{image_url}')"
     else:
-        # Gold trophy emoji (Twemoji SVG)
         bg = "url('https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f3c6.svg')"
 
     st.markdown(
@@ -399,8 +409,6 @@ def create_division_comparison(df: pd.DataFrame) -> pd.DataFrame:
     return division_stats
 
 # ====================== VISUALIZATION FUNCTIONS ===================
-import altair as alt
-
 def create_horizontal_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title: str, color_scheme: str = "blues") -> alt.Chart:
     if df.empty:
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
@@ -785,14 +793,13 @@ def main():
 </div>
 """, unsafe_allow_html=True)
 
-    # Add trophy background (URL or local file)
+    # Trophy background (URL or local file)
     add_world_cup_watermark(
         image_url="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f3c6.svg",
-        opacity=0.10,    # increase if you want it more visible
-        size="68vmin",   # try "800px" or "60vw" if preferred
+        opacity=0.10,
+        size="68vmin",
         y_offset="6vh"
     )
-    # Or: add_world_cup_watermark(image_path="assets/trophy.svg", opacity=0.1, size="800px", y_offset="6vh")
 
     GOOGLE_SHEETS_URL = (
         "https://docs.google.com/spreadsheets/d/e/"
@@ -857,8 +864,10 @@ def main():
         if selected_players:
             tournament_data = tournament_data[tournament_data["Player"].isin(selected_players)]
 
-    # Tabs
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📥 DOWNLOADS"])
+    # Tabs (this first tabs block is sticky via CSS above)
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+        ["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📥 DOWNLOADS"]
+    )
 
     current_stats = calculate_tournament_stats(tournament_data)
     top_performers = get_top_performers(tournament_data, 10)
