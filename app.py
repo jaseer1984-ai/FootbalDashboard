@@ -154,38 +154,28 @@ def inject_advanced_css():
         .status-err { background:#fee2e2; border-left:4px solid #ef4444; color:#7f1d1d; }
 
         /* ===== PLAYER CARDS (scoped styles; white cards) ===== */
-        .players-grid{
-            display:grid;
-            gap:16px;
-            grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
-            margin-top:.5rem;
-        }
-        .pcard{
-            background:#ffffff;
-            color:#1e293b;
-            border-radius:16px;
-            padding:16px 16px 12px 16px;
-            border:1px solid #e5e7eb;
-            box-shadow:0 4px 12px rgba(0,0,0,.08);
-        }
-        .pcard h3{ margin:0 0 8px 0; font-size:1.15rem; line-height:1.35; font-weight:700; color:#111827; }
-        .pcard .sub{ font-size:.9rem; color:#475569; }
-        .pcard .muted{ color:#94a3b8; font-size:.9rem; margin:.15rem 0 .25rem; }
+        /* ===== PLAYER CARDS (white) ===== */
+.players-grid{
+  display:grid; gap:16px; grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
+  margin-top:.5rem;
+}
+.pcard{
+  background:#ffffff; color:#1e293b;
+  border-radius:16px; padding:16px 16px 12px 16px;
+  border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,.08);
+}
+.pcard h3{ margin:0 0 8px 0; font-size:1.15rem; line-height:1.35; font-weight:700; color:#111827; }
+.pcard .sub{ font-size:.9rem; color:#475569; }
+.pcard .muted{ color:#94a3b8; font-size:.9rem; margin:.15rem 0 .25rem; }
+.pcard .row{ display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px; margin:.5rem 0; }
+.pcard .label{ font-size:.9rem; color:#334155; white-space:nowrap; }
+.pcard .dotbar{ position:relative; height:10px; border-radius:999px; background:#f1f5f9; border:1px solid #e2e8f0; overflow:hidden; }
+.pcard .dotbar>span{ position:absolute; inset:0; width:var(--pct,0%); height:100%;
+  background:linear-gradient(90deg,#3b82f6,#06b6d4); transition:width .4s ease; }
+.pcard .num{ width:32px; text-align:right; font-variant-numeric:tabular-nums; color:#111827; }
+.pcard .pill{ display:inline-block; margin-top:.5rem; padding:.25rem .55rem; border-radius:9999px; font-size:.75rem;
+  background:#f8fafc; color:#0f172a; border:1px dashed #94a3b8; }
 
-        .pcard .row{ display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px; margin:.5rem 0; }
-        .pcard .label{ font-size:.9rem; color:#334155; white-space:nowrap; }
-        .pcard .dotbar{ position:relative; height:10px; border-radius:999px; background:#f1f5f9; border:1px solid #e2e8f0; overflow:hidden; }
-        .pcard .dotbar>span{ position:absolute; inset:0; width:var(--pct,0%); height:100%;
-            background:linear-gradient(90deg,#3b82f6,#06b6d4); transition:width .4s ease; }
-        .pcard .num{ width:32px; text-align:right; font-variant-numeric:tabular-nums; color:#111827; }
-
-        .pcard .pill{ display:inline-block; margin-top:.5rem; padding:.25rem .55rem; border-radius:9999px; font-size:.75rem;
-            background:#f8fafc; color:#0f172a; border:1px dashed #94a3b8; }
-
-        @media (max-width: 768px) {
-            .block-container { padding: 1rem .5rem; margin: .5rem; width: 95vw; max-width: 95vw; }
-            .app-title .ball{font-size:24px;}
-        }
     </style>
     """,
         unsafe_allow_html=True,
@@ -813,67 +803,42 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
 
 # ============ NEW: Player Cards HTML (white background) ============
 def build_player_cards_html(df: pd.DataFrame) -> str:
-    """
-    Render white player cards showing total goals per player in current filtered view.
-    """
+    """Render white player cards showing total goals per player in current filtered view."""
     if df.empty:
         return "<p>No players match current filters.</p>"
 
     agg = (
         df.groupby(["Player", "Team", "Division"])["Goals"]
-        .sum()
-        .reset_index()
-        .sort_values(["Goals", "Player"], ascending=[False, True])
-        .reset_index(drop=True)
+          .sum()
+          .reset_index()
+          .sort_values(["Goals", "Player"], ascending=[False, True])
+          .reset_index(drop=True)
     )
-
     max_goals = max(1, int(agg["Goals"].max()))
-    parts = ['<div class="players-grid">']
+    html = ['<div class="players-grid">']
     for _, r in agg.iterrows():
-        name = str(r["Player"]).strip()
-        team = str(r["Team"]).strip()
-        division = str(r["Division"]).strip()
-        goals = int(r["Goals"])
-        pct = int(round(goals / max_goals * 100))
+        name, team, division = str(r["Player"]).strip(), str(r["Team"]).strip(), str(r["Division"]).strip()
+        goals = int(r["Goals"]); pct = int(round(goals / max_goals * 100))
+        html.append(f"""
+        <div class="pcard">
+          <h3>{name}</h3>
+          <div class="sub">{team} • {division} • Age —</div>
+          <div class="muted">—</div>
 
-        parts.append(
-            f"""
-            <div class="pcard">
-              <h3>{name}</h3>
-              <div class="sub">{team} • {division} • Age —</div>
-              <div class="muted">—</div>
+          <div class="row">
+            <div class="label">⚽ Goals</div>
+            <div class="dotbar"><span style="--pct:{pct}%"></span></div>
+            <div class="num">{goals}</div>
+          </div>
+          <div class="row"><div class="label">👕 Appearances</div><div class="dotbar"><span style="--pct:0%"></span></div><div class="num">0</div></div>
+          <div class="row"><div class="label">🟨 Yellow Cards</div><div class="dotbar"><span style="--pct:0%"></span></div><div class="num">0</div></div>
+          <div class="row"><div class="label">🟥 Red Cards</div><div class="dotbar"><span style="--pct:0%"></span></div><div class="num">0</div></div>
 
-              <div class="row">
-                <div class="label">⚽ Goals</div>
-                <div class="dotbar"><span style="--pct:{pct}%"></span></div>
-                <div class="num">{goals}</div>
-              </div>
+          <span class="pill">No awards</span>
+        </div>""")
+    html.append("</div>")
+    return "\n".join(html)
 
-              <div class="row">
-                <div class="label">👕 Appearances</div>
-                <div class="dotbar"><span style="--pct:0%"></span></div>
-                <div class="num">0</div>
-              </div>
-
-              <div class="row">
-                <div class="label">🟨 Yellow Cards</div>
-                <div class="dotbar"><span style="--pct:0%"></span></div>
-                <div class="num">0</div>
-              </div>
-
-              <div class="row">
-                <div class="label">🟥 Red Cards</div>
-                <div class="dotbar"><span style="--pct:0%"></span></div>
-                <div class="num">0</div>
-              </div>
-
-              <span class="pill">No awards</span>
-            </div>
-            """
-        )
-
-    parts.append("</div>")
-    return "\n".join(parts)
 
 # ====================== MAIN APPLICATION ==========================
 def main():
@@ -1097,3 +1062,4 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
         st.exception(e)
+
