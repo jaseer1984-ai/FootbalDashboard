@@ -10,6 +10,7 @@
 # - Title shows football emoji correctly
 # - Robust World Cup trophy watermark background
 # - ✅ Players tab now renders WHITE CARD VIEW (no table)
+# - ✅ Goal bar scales by top scorer; fake stats removed
 
 from __future__ import annotations
 
@@ -51,8 +52,7 @@ def inject_advanced_css():
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
         :root{
-          /* Adjust this if the sticky tabs should sit a bit lower/higher */
-          --sticky-tabs-top: 52px;
+          --sticky-tabs-top: 52px; /* Adjust vertical offset of sticky tabs */
         }
 
         .stApp {
@@ -487,9 +487,7 @@ def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
 def create_advanced_scatter_plot(df: pd.DataFrame):
     if df.empty:
         if PLOTLY_AVAILABLE:
-            fig = go.Figure()
-            fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False)
-            return fig
+            fig = go.Figure(); fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False); return fig
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
 
     team_stats = df.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Goals=("Goals", "sum")).reset_index()
@@ -529,22 +527,13 @@ def create_advanced_scatter_plot(df: pd.DataFrame):
 def create_goals_distribution_histogram(df: pd.DataFrame):
     if df.empty:
         if PLOTLY_AVAILABLE:
-            fig = go.Figure()
-            fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False)
-            return fig
+            fig = go.Figure(); fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False); return fig
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
 
     player_goals = df.groupby(["Player", "Team"])["Goals"].sum().values
     if PLOTLY_AVAILABLE:
         fig = go.Figure(
-            data=[go.Histogram(
-                x=player_goals,
-                nbinsx=max(1, len(set(player_goals))),
-                marker_line_color="white",
-                marker_line_width=1.5,
-                opacity=0.85,
-                hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>"
-            )]
+            data=[go.Histogram(x=player_goals, nbinsx=max(1, len(set(player_goals))), marker_line_color="white", marker_line_width=1.5, opacity=0.85, hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>")]
         )
         fig.update_layout(
             title="Distribution of Goals per Player",
@@ -815,7 +804,7 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 help="Download ZIP containing all data, summaries, and analytics",
             )
 
-# ============ NEW: Player Cards HTML (white background) ============
+# ============ NEW: Player Cards HTML (white background, no fake stats) ============
 def build_player_cards_html(df: pd.DataFrame) -> str:
     if df.empty:
         return "<p>No players to display.</p>"
@@ -824,21 +813,25 @@ def build_player_cards_html(df: pd.DataFrame) -> str:
         df.groupby(["Player", "Team", "Division"])["Goals"]
         .sum()
         .reset_index()
-        .sort_values("Goals", ascending=False)
+        .sort_values(["Goals", "Player"], ascending=[False, True])
     )
 
+    max_goals = int(agg["Goals"].max()) if not agg.empty else 1
+
     html = ['<div class="players-grid">']
-    for _, r in agg.iterrows():   # correct iteration
+    for _, r in agg.iterrows():
         name = r["Player"]
         team = r["Team"]
         division = r["Division"]
         goals = int(r["Goals"])
-        pct = min(100, goals * 50)  # scale for bar, adjust as needed
+
+        # Scale bar relative to top scorer; avoid division by zero
+        pct = int(round((goals / max(1, max_goals)) * 100))
 
         html.append(f"""
         <div class="pcard">
           <h3>{name}</h3>
-          <div class="sub">{team} • {division} • Age —</div>
+          <div class="sub">{team} • {division}</div>
           <div class="muted">—</div>
 
           <div class="row">
@@ -846,14 +839,10 @@ def build_player_cards_html(df: pd.DataFrame) -> str:
             <div class="dotbar"><span style="--pct:{pct}%"></span></div>
             <div class="num">{goals}</div>
           </div>
-          <div class="row"><div class="label">👕 Appearances</div><div class="dotbar"><span style="--pct:0%"></span></div><div class="num">0</div></div>
-          <div class="row"><div class="label">🟨 Yellow Cards</div><div class="dotbar"><span style="--pct:0%"></span></div><div class="num">0</div></div>
-          <div class="row"><div class="label">🟥 Red Cards</div><div class="dotbar"><span style="--pct:0%"></span></div><div class="num">0</div></div>
 
           <span class="pill">No awards</span>
         </div>
         """)
-
     html.append("</div>")
     return "\n".join(html)
 
