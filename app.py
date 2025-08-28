@@ -1,14 +1,6 @@
 # ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard
 # Author: AI Assistant | Updated: 2025-08-28
-# What’s new in this build:
-# - Tabs bar is STICKY (frozen) — content scrolls beneath it
-# - Sidebar toggle kept visible
-# - Removed "Minimum goals per player" quick filter
-# - Player Search is a type-to-search multiselect
-# - Removed every "avg goals per player" display
-# - Fixed Altair TitleParams (fontWeight)
-# - Title shows football emoji correctly
-# - Robust World Cup trophy watermark background
+# Players tab now uses light profile-card grid (no table)
 
 from __future__ import annotations
 
@@ -50,7 +42,6 @@ def inject_advanced_css():
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
         :root{
-          /* Adjust this if the sticky tabs should sit a bit lower/higher */
           --sticky-tabs-top: 52px;
         }
 
@@ -68,23 +59,21 @@ def inject_advanced_css():
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.15);
             margin: 1rem auto;
-            position: relative; /* for z layering */
+            position: relative;
             z-index: 1;
         }
 
-        /* Keep header/toolbar visible so sidebar toggle shows */
+        /* Hide Streamlit chrome but keep sidebar toggle available */
         #MainMenu, footer, .stDeployButton,
         div[data-testid="stDecoration"],
-        div[data-testid="stStatusWidget"] {
-            display: none !important;
-        }
+        div[data-testid="stStatusWidget"] { display: none !important; }
 
-        /* ----- STICKY TABS (freeze the pane just below the tabs) ----- */
+        /* ----- STICKY TABS ----- */
         .block-container [data-testid="stTabs"]:first-of-type{
             position: sticky;
             top: var(--sticky-tabs-top);
-            z-index: 6;                           /* above content, below dialogs */
-            background: rgba(255,255,255,0.96);   /* frosted background */
+            z-index: 6;
+            background: rgba(255,255,255,0.96);
             backdrop-filter: blur(8px);
             border-bottom: 1px solid #e2e8f0;
             padding-top: .25rem;
@@ -92,7 +81,7 @@ def inject_advanced_css():
             margin-top: .25rem;
         }
 
-        /* App title */
+        /* Title */
         .app-title{
             display:flex; align-items:center; justify-content:center; gap:12px;
             margin: .75rem 0 1.0rem;
@@ -129,11 +118,7 @@ def inject_advanced_css():
         }
 
         /* Dataframes */
-        .stDataFrame {
-            border-radius: 15px !important;
-            overflow: hidden !important;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.08) !important;
-        }
+        .stDataFrame { border-radius: 15px !important; overflow: hidden !important; box-shadow: 0 8px 32px rgba(0,0,0,0.08) !important; }
 
         /* Metric cards */
         .metric-container {
@@ -151,6 +136,47 @@ def inject_advanced_css():
         .status-ok  { background:#ecfeff; border-left:4px solid #06b6d4; color:#155e75; }
         .status-warn{ background:#fef9c3; border-left:4px solid #f59e0b; color:#713f12; }
         .status-err { background:#fee2e2; border-left:4px solid #ef4444; color:#7f1d1d; }
+
+        /* -------- Light Player Cards (new) -------- */
+        .player-grid{
+            display:grid;
+            grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+            gap:16px;
+        }
+        .pcard{
+            background:#fff;
+            border:1px solid #e5e7eb;
+            border-radius:16px;
+            padding:20px 18px;
+            box-shadow: 0 10px 24px rgba(0,0,0,.06);
+            transition: transform .15s ease, box-shadow .15s ease;
+        }
+        .pcard:hover{ transform: translateY(-3px); box-shadow: 0 16px 32px rgba(0,0,0,.08); }
+        .pcard h3{
+            margin:.25rem 0 .35rem 0;
+            font-size:1.35rem;
+            line-height:1.2;
+        }
+        .pcard .sub{
+            color:#4b5563; font-size:.95rem; margin-bottom:.25rem;
+        }
+        .pcard .muted{ color:#9ca3af; font-size:.9rem; margin-bottom:.5rem; }
+        .pcard .row{ display:flex; align-items:center; gap:10px; margin:.45rem 0; }
+        .pcard .label{ min-width:132px; color:#111827; }
+        .pcard .dotbar{
+            flex:1; height:14px; background:#f3f4f6; border-radius:999px; overflow:hidden; border:1px solid #e5e7eb;
+        }
+        .pcard .dotbar > span{
+            display:block; height:100%;
+            background:linear-gradient(90deg,#fb923c,#f97316);
+            width:var(--pct,0%);
+        }
+        .pcard .num{ width:36px; text-align:right; font-variant-numeric:tabular-nums; }
+        .pcard .pill{
+            display:inline-block; margin-top:.4rem;
+            background:#fff7ed; color:#92400e; border:1px dashed #fdba74;
+            font-size:.85rem; padding:.35rem .6rem; border-radius:999px;
+        }
 
         @media (max-width: 768px) {
             .block-container { padding: 1rem .5rem; margin: .5rem; width: 95vw; max-width: 95vw; }
@@ -197,13 +223,12 @@ def notify(msg: str, kind: str = "ok"):
     cls = {"ok": "status-ok", "warn": "status-warn", "err": "status-err"}.get(kind, "status-ok")
     st.markdown(f'<div class="status-pill {cls}">{msg}</div>', unsafe_allow_html=True)
 
-# ---------- Robust Trophy watermark (DOM element, not :before) ----------
+# ---------- Watermark ----------
 def add_world_cup_watermark(*, image_path: str | None = None,
                             image_url: str | None = None,
                             opacity: float = 0.08,
                             size: str = "68vmin",
                             y_offset: str = "6vh"):
-    """Shows a big, faint trophy behind the whole app."""
     if image_path:
         ext = "svg+xml" if image_path.lower().endswith(".svg") else "png"
         b64 = base64.b64encode(Path(image_path).read_bytes()).decode()
@@ -225,7 +250,7 @@ def add_world_cup_watermark(*, image_path: str | None = None,
         background-size: {size};
         opacity: {opacity};
         pointer-events: none;
-        z-index: 0; /* below content; .block-container has z-index:1 */
+        z-index: 0;
       }}
     </style>
     <div id="wc-trophy"></div>
@@ -408,7 +433,7 @@ def create_division_comparison(df: pd.DataFrame) -> pd.DataFrame:
     division_stats["Goal_Share_Pct"] = (division_stats["Total_Goals"] / total_goals * 100).round(1) if total_goals else 0
     return division_stats
 
-# ====================== VISUALIZATION FUNCTIONS ===================
+# ====================== VISUALIZATION =============================
 def create_horizontal_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title: str, color_scheme: str = "blues") -> alt.Chart:
     if df.empty:
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
@@ -430,20 +455,13 @@ def create_horizontal_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title:
 def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
     if df.empty:
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
-
     division_data = df.groupby("Division")["Goals"].sum().reset_index()
     sel = alt.selection_single(fields=["Division"], empty="none")
-
     base = (
         alt.Chart(division_data)
         .add_selection(sel)
-        .properties(
-            width=300,
-            height=300,
-            title=alt.TitleParams(text="Goals Distribution by Division", fontSize=16, fontWeight=600),
-        )
+        .properties(width=300, height=300, title=alt.TitleParams(text="Goals Distribution by Division", fontSize=16, fontWeight=600))
     )
-
     outer = (
         base.mark_arc(innerRadius=60, outerRadius=120, stroke="white", strokeWidth=2)
         .encode(
@@ -453,12 +471,9 @@ def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
             tooltip=["Division:N", alt.Tooltip("Goals:Q", format="d")],
         )
     )
-
-    center_text = (
-        base.mark_text(align="center", baseline="middle", fontSize=18, fontWeight="bold", color="#1e293b")
-        .encode(text=alt.value(f"Total\n{int(division_data['Goals'].sum())}"))
+    center_text = base.mark_text(align="center", baseline="middle", fontSize=18, fontWeight="bold", color="#1e293b").encode(
+        text=alt.value(f"Total\n{int(division_data['Goals'].sum())}")
     )
-
     return outer + center_text
 
 def create_advanced_scatter_plot(df: pd.DataFrame):
@@ -466,9 +481,7 @@ def create_advanced_scatter_plot(df: pd.DataFrame):
         if PLOTLY_AVAILABLE:
             fig = go.Figure(); fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False); return fig
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
-
     team_stats = df.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Goals=("Goals", "sum")).reset_index()
-
     if PLOTLY_AVAILABLE:
         fig = px.scatter(
             team_stats, x="Players", y="Goals", color="Division", size="Goals",
@@ -477,9 +490,7 @@ def create_advanced_scatter_plot(df: pd.DataFrame):
         )
         fig.update_traces(marker=dict(sizemode="diameter", sizemin=8, sizemax=30, line=dict(width=2, color="white"), opacity=0.85))
         fig.update_layout(
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            font=dict(family="Poppins", size=12),
+            plot_bgcolor="white", paper_bgcolor="white", font=dict(family="Poppins", size=12),
             title=dict(font=dict(size=16, color="#1e293b")),
             xaxis=dict(title="Number of Players in Team", gridcolor="#f1f5f9", zeroline=False),
             yaxis=dict(title="Total Goals", gridcolor="#f1f5f9", zeroline=False),
@@ -487,7 +498,6 @@ def create_advanced_scatter_plot(df: pd.DataFrame):
             height=400,
         )
         return fig
-
     return (
         alt.Chart(team_stats)
         .mark_circle(size=100, opacity=0.85)
@@ -506,26 +516,21 @@ def create_goals_distribution_histogram(df: pd.DataFrame):
         if PLOTLY_AVAILABLE:
             fig = go.Figure(); fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False); return fig
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
-
     player_goals = df.groupby(["Player", "Team"])["Goals"].sum().values
     if PLOTLY_AVAILABLE:
         fig = go.Figure(
-            data=[go.Histogram(x=player_goals, nbinsx=max(1, len(set(player_goals))), marker_line_color="white", marker_line_width=1.5, opacity=0.85, hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>")]
+            data=[go.Histogram(x=player_goals, nbinsx=max(1, len(set(player_goals))), marker_line_color="white", marker_line_width=1.5, opacity=0.85,
+                               hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>")]
         )
         fig.update_layout(
             title="Distribution of Goals per Player",
-            xaxis_title="Goals per Player",
-            yaxis_title="Number of Players",
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            font=dict(family="Poppins", size=12),
+            xaxis_title="Goals per Player", yaxis_title="Number of Players",
+            plot_bgcolor="white", paper_bgcolor="white", font=dict(family="Poppins", size=12),
             title_font=dict(size=16, color="#1e293b"),
-            xaxis=dict(gridcolor="#f1f5f9", zeroline=False),
-            yaxis=dict(gridcolor="#f1f5f9", zeroline=False),
+            xaxis=dict(gridcolor="#f1f5f9", zeroline=False), yaxis=dict(gridcolor="#f1f5f9", zeroline=False),
             height=400,
         )
         return fig
-
     hist_df = pd.DataFrame({"Goals": player_goals})
     return (
         alt.Chart(hist_df)
@@ -538,7 +543,7 @@ def create_goals_distribution_histogram(df: pd.DataFrame):
         .properties(title="Distribution of Goals per Player", height=400)
     )
 
-# ====================== UI COMPONENTS =============================
+# ====================== UI PARTS ==================================
 def display_metric_cards(stats: dict):
     c1, c2, c3 = st.columns(3)
     c1.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_goals']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">TOTAL GOALS</div></div>""", unsafe_allow_html=True)
@@ -692,6 +697,65 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "records"):
             },
         )
 
+# -------- NEW: render light player cards (replaces table in Players tab) --------
+def render_player_cards(df: pd.DataFrame, max_players: int | None = None):
+    if df.empty:
+        st.info("No players match your current filters.")
+        return
+
+    players = (
+        df.groupby(["Player", "Team", "Division"])["Goals"]
+        .sum()
+        .reset_index()
+        .sort_values(["Goals", "Player"], ascending=[False, True])
+    )
+    if max_players:
+        players = players.head(max_players)
+
+    # Build grid HTML
+    cards_html = ['<div class="player-grid">']
+    for _, r in players.iterrows():
+        name = str(r["Player"])
+        team = str(r["Team"])
+        division = str(r["Division"])
+        goals = int(r["Goals"])
+        # width percentage for the orange bar: cap at 100 for >5 goals
+        pct = min(100, int(round((goals / max(1, players["Goals"].max())) * 100)))
+
+        card = f"""
+        <div class="pcard">
+            <h3>{name}</h3>
+            <div class="sub">{team} • {division} • Age —</div>
+            <div class="muted">—</div>
+
+            <div class="row">
+                <div class="label">⚽ Goals</div>
+                <div class="dotbar"><span style="--pct:{pct}%"></span></div>
+                <div class="num">{goals}</div>
+            </div>
+            <div class="row">
+                <div class="label">👕 Appearances</div>
+                <div class="dotbar"><span style="--pct:0%"></span></div>
+                <div class="num">0</div>
+            </div>
+            <div class="row">
+                <div class="label">🟨 Yellow Cards</div>
+                <div class="dotbar"><span style="--pct:0%"></span></div>
+                <div class="num">0</div>
+            </div>
+            <div class="row">
+                <div class="label">🟥 Red Cards</div>
+                <div class="dotbar"><span style="--pct:0%"></span></div>
+                <div class="num">0</div>
+            </div>
+
+            <span class="pill">No awards</span>
+        </div>
+        """
+        cards_html.append(card)
+    cards_html.append("</div>")
+    st.markdown("\n".join(cards_html), unsafe_allow_html=True)
+
 def create_comprehensive_zip_report(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as z:
@@ -793,7 +857,7 @@ def main():
 </div>
 """, unsafe_allow_html=True)
 
-    # Trophy background (URL or local file)
+    # Trophy background
     add_world_cup_watermark(
         image_url="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f3c6.svg",
         opacity=0.10,
@@ -864,7 +928,7 @@ def main():
         if selected_players:
             tournament_data = tournament_data[tournament_data["Player"].isin(selected_players)]
 
-    # Tabs (this first tabs block is sticky via CSS above)
+    # Tabs (sticky)
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         ["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📥 DOWNLOADS"]
     )
@@ -941,34 +1005,10 @@ def main():
             if not team_analysis.empty:
                 st.altair_chart(create_horizontal_bar_chart(team_analysis.head(15), "Goals", "Team", "Team Goals Distribution", "viridis"), use_container_width=True)
 
-    # TAB 4
+    # TAB 4  ————— REPLACED TABLE WITH CARD GRID —————
     with tab4:
-        st.header("👤 Players Analysis")
-        if tournament_data.empty:
-            st.info("🔍 No players match your current filters.")
-        else:
-            st.subheader("📋 Players Ranking")
-            create_enhanced_data_table(tournament_data, "players")
-            st.divider()
-            c1, c2 = st.columns(2)
-            with c1:
-                st.subheader("🥇 Top Scorers by Division")
-                for division in tournament_data["Division"].unique():
-                    div_data = tournament_data[tournament_data["Division"] == division]
-                    div_top = div_data.groupby(["Player", "Team"])["Goals"].sum().reset_index().sort_values("Goals", ascending=False).head(5)
-                    st.write(f"**{division}**")
-                    if not div_top.empty:
-                        for _, row in div_top.iterrows():
-                            st.write(f"• {row['Player']} ({row['Team']}) — {int(row['Goals'])} goals")
-                    else:
-                        st.write("• No players found")
-                    st.write("")
-            with c2:
-                st.subheader("📊 Player Statistics")
-                player_goals = tournament_data.groupby(["Player", "Team"])["Goals"].sum()
-                st.metric("🎯 Highest Individual Score", int(player_goals.max()) if not player_goals.empty else 0)
-                st.metric("👥 Players with 2+ Goals", int((player_goals >= 2).sum()))
-                st.metric("⚽ Single Goal Scorers", int((player_goals == 1).sum()))
+        st.header("👤 Player Profiles")
+        render_player_cards(tournament_data)  # 👈 new card grid, no table
 
     # TAB 5
     with tab5:
