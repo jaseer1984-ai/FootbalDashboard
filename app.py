@@ -9,6 +9,7 @@
 # - Fixed Altair TitleParams (fontWeight)
 # - Title shows football emoji correctly
 # - Robust World Cup trophy watermark background
+# - NEW: Player Profile Cards (inside 👤 PLAYERS tab)
 
 from __future__ import annotations
 
@@ -151,6 +152,43 @@ def inject_advanced_css():
         .status-ok  { background:#ecfeff; border-left:4px solid #06b6d4; color:#155e75; }
         .status-warn{ background:#fef9c3; border-left:4px solid #f59e0b; color:#713f12; }
         .status-err { background:#fee2e2; border-left:4px solid #ef4444; color:#7f1d1d; }
+
+        /* ===== Player profile cards (NEW) ===== */
+        .player-grid{
+          display:grid; gap:16px;
+          grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+          margin-top: .5rem;
+        }
+        .player-card{
+          background:#0f172a; color:#e2e8f0;
+          border-radius:16px; overflow:hidden;
+          box-shadow:0 10px 24px rgba(2,6,23,.35);
+          border:1px solid rgba(148,163,184,.15);
+        }
+        .pc-top{ display:grid; grid-template-columns:120px 1fr; gap:16px; padding:16px; align-items:center;}
+        .pc-fig{
+          background:#d9e6a5; height:120px; border-radius:12px;
+          display:flex; align-items:center; justify-content:center; color:#0f172a; font-weight:700;
+        }
+        .pc-name{ font-size:1.1rem; font-weight:700; letter-spacing:.03em; }
+        .pc-sub{ opacity:.85; font-size:.85rem; }
+        .pc-body{ padding:16px; border-top:1px solid rgba(148,163,184,.15);}
+        .pc-row{ display:flex; align-items:center; gap:10px; margin:.4rem 0;}
+        .pc-label{ width:140px; font-size:.82rem; opacity:.85;}
+        .pc-bar{
+          flex:1; height:16px; background:#1f2937; border-radius:10px; overflow:hidden; position:relative;
+          border:1px solid rgba(148,163,184,.12);
+        }
+        .pc-bar > span{
+          display:block; height:100%; background:linear-gradient(90deg,#f97316,#ef4444);
+          width:var(--pct,0%); transition:width .4s ease;
+        }
+        .pc-num{ width:54px; text-align:right; font-variant-numeric:tabular-nums; }
+        .pc-footer{ display:flex; gap:8px; padding:12px 16px 16px; flex-wrap:wrap; }
+        .pc-pill{
+          background:#111827; color:#fbbf24; border:1px dashed rgba(251,191,36,.35);
+          padding:.25rem .5rem; border-radius:999px; font-size:.75rem;
+        }
 
         @media (max-width: 768px) {
             .block-container { padding: 1rem .5rem; margin: .5rem; width: 95vw; max-width: 95vw; }
@@ -469,7 +507,7 @@ def create_advanced_scatter_plot(df: pd.DataFrame):
 
     team_stats = df.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Goals=("Goals", "sum")).reset_index()
 
-    if PLOTLY_AVAILABLE:
+    if PLOTLY_AVAILABLE and px is not None:
         fig = px.scatter(
             team_stats, x="Players", y="Goals", color="Division", size="Goals",
             hover_name="Team", hover_data={"Players": True, "Goals": True},
@@ -781,6 +819,142 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 help="Download ZIP containing all data, summaries, and analytics",
             )
 
+# ====================== NEW: PLAYER PROFILE HELPERS ===============
+def _safe_int(x, default=0):
+    try:
+        if pd.isna(x):
+            return default
+        return int(float(x))
+    except Exception:
+        return default
+
+def build_player_profiles(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Build one row per player with totals plus optional extras (if such columns exist).
+    Works with your current schema (Division, Team, Player, Goals).
+    """
+    if df.empty:
+        return pd.DataFrame(columns=["Player","Team","Division","Goals","Appearances","Yellow","Red","Shirt","Age","Awards"])
+
+    # core goals per player/team/division
+    core = (
+        df.groupby(["Player","Team","Division"])["Goals"]
+        .sum().reset_index().rename(columns={"Goals":"Goals"})
+    )
+
+    # Optional columns
+    optional_cols = ["Appearances","Yellow","Red","Shirt","Age","Awards"]
+    present = [c for c in optional_cols if c in df.columns]
+    if present:
+        extras = (
+            df.groupby(["Player","Team","Division"])[present]
+            .agg(lambda s: s.dropna().iloc[0] if not s.dropna().empty else None)
+            .reset_index()
+        )
+        out = core.merge(extras, on=["Player","Team","Division"], how="left")
+    else:
+        out = core.copy()
+        out["Appearances"] = 0
+        out["Yellow"] = 0
+        out["Red"] = 0
+        out["Shirt"] = "—"
+        out["Age"] = "—"
+        out["Awards"] = None
+
+    # Clean/types
+    out["Appearances"] = out["Appearances"].apply(_safe_int)
+    out["Yellow"] = out["Yellow"].apply(_safe_int)
+    out["Red"] = out["Red"].apply(_safe_int)
+    out["Shirt"] = out["Shirt"].apply(lambda x: "—" if pd.isna(x) or str(x).strip()=="" else str(x).strip())
+    out["Age"] = out["Age"].apply(lambda x: "—" if pd.isna(x) or str(x).strip()=="" else str(x).strip())
+
+    # Normalize awards to list
+    def _awards_to_list(x):
+        if pd.isna(x) or x in [None, "", "nan", "None"]:
+            return []
+        if isinstance(x, list):
+            return [str(a).strip() for a in x if str(a).strip()]
+        return [s.strip() for s in str(x).split(",") if s.strip()]
+    out["Awards"] = out["Awards"].apply(_awards_to_list)
+
+    out = out.sort_values(["Goals","Player"], ascending=[False, True]).reset_index(drop=True)
+    return out
+
+def render_player_cards(profiles: pd.DataFrame):
+    """
+    Render responsive player cards. Bars scale to current filtered maxima.
+    """
+    if profiles.empty:
+        st.info("🔍 No players to show for current filters.")
+        return
+
+    max_goals = max(1, int(profiles["Goals"].max()))
+    max_apps  = max(1, int(profiles["Appearances"].max() if "Appearances" in profiles else 0))
+    max_y     = max(1, int(profiles["Yellow"].max() if "Yellow" in profiles else 0))
+    max_r     = max(1, int(profiles["Red"].max() if "Red" in profiles else 0))
+
+    def pct(v, m):
+        v = _safe_int(v, 0); m = max(1, _safe_int(m, 1))
+        return f"{int(round(100 * v / m))}%"
+
+    cards = ["<div class='player-grid'>"]
+    for _, row in profiles.iterrows():
+        name = str(row["Player"])
+        team = str(row["Team"])
+        division = str(row["Division"])
+
+        shirt = row.get("Shirt", "—") or "—"
+        age   = row.get("Age", "—") or "—"
+
+        g = _safe_int(row.get("Goals", 0));   g_pct = pct(g, max_goals)
+        a = _safe_int(row.get("Appearances", 0)); a_pct = pct(a, max_apps)
+        y = _safe_int(row.get("Yellow", 0));  y_pct = pct(y, max_y)
+        r = _safe_int(row.get("Red", 0));     r_pct = pct(r, max_r)
+
+        awards = row.get("Awards", [])
+        if not isinstance(awards, list): awards = []
+        awards_html = " ".join([f"<span class='pc-pill'>{aw}</span>" for aw in awards]) or "<span class='pc-pill' style='opacity:.7;'>No awards</span>"
+
+        html = f"""
+        <div class="player-card">
+          <div class="pc-top">
+            <div class="pc-fig">#{shirt}</div>
+            <div>
+              <div class="pc-name">{name}</div>
+              <div class="pc-sub">{team} • {division} • — • Age {age}</div>
+            </div>
+          </div>
+          <div class="pc-body">
+            <div class="pc-row">
+              <div class="pc-label">Goals</div>
+              <div class="pc-bar"><span style="--pct:{g_pct}"></span></div>
+              <div class="pc-num">{g}</div>
+            </div>
+            <div class="pc-row">
+              <div class="pc-label">Appearances</div>
+              <div class="pc-bar"><span style="--pct:{a_pct}"></span></div>
+              <div class="pc-num">{a}</div>
+            </div>
+            <div class="pc-row">
+              <div class="pc-label">Yellow Cards</div>
+              <div class="pc-bar"><span style="--pct:{y_pct}"></span></div>
+              <div class="pc-num">{y}</div>
+            </div>
+            <div class="pc-row">
+              <div class="pc-label">Red Cards</div>
+              <div class="pc-bar"><span style="--pct:{r_pct}"></span></div>
+              <div class="pc-num">{r}</div>
+            </div>
+          </div>
+          <div class="pc-footer">
+            {awards_html}
+          </div>
+        </div>
+        """
+        cards.append(html)
+    cards.append("</div>")
+    st.markdown("\n".join(cards), unsafe_allow_html=True)
+
 # ====================== MAIN APPLICATION ==========================
 def main():
     inject_advanced_css()
@@ -969,6 +1143,22 @@ def main():
                 st.metric("🎯 Highest Individual Score", int(player_goals.max()) if not player_goals.empty else 0)
                 st.metric("👥 Players with 2+ Goals", int((player_goals >= 2).sum()))
                 st.metric("⚽ Single Goal Scorers", int((player_goals == 1).sum()))
+
+            # ---- NEW: Card view under existing sections ----
+            st.divider()
+            st.subheader("📇 Player Profiles (Card View)")
+            profiles_df = build_player_profiles(tournament_data)
+            # Optional quick filters for the card grid:
+            colf1, colf2 = st.columns([2,1])
+            with colf1:
+                q = st.text_input("🔎 Search player name (contains)", "")
+            with colf2:
+                min_goals = st.number_input("Minimum goals", min_value=0, value=0, step=1)
+            if q:
+                profiles_df = profiles_df[profiles_df["Player"].str.contains(q, case=False, na=False)]
+            if min_goals > 0:
+                profiles_df = profiles_df[profiles_df["Goals"] >= min_goals]
+            render_player_cards(profiles_df)
 
     # TAB 5
     with tab5:
