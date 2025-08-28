@@ -1,6 +1,6 @@
-# ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard
-# Author: AI Assistant | Updated: 2025-08-28
-# Players tab now uses light profile-card grid with fixed bar scale (0/50/100)
+# ABEER BLUESTAR SOCCER FEST 2K25 — Full Dashboard (Players tab = Card Model)
+# Author: AI Assistant
+# Last update: 2025-08-28
 
 from __future__ import annotations
 
@@ -10,23 +10,28 @@ from io import BytesIO
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import zipfile
+from html import escape as html_escape
 
 import altair as alt
 import pandas as pd
 import requests
 import streamlit as st
 
-# Optional imports with fallbacks
+# Optional Plotly (nice to have)
 PLOTLY_AVAILABLE = False
 try:
     import plotly.express as px
     import plotly.graph_objects as go
+
     PLOTLY_AVAILABLE = True
 except Exception:
     px = None
     go = None
 
-# ====================== CONFIGURATION =============================
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Page config
+# ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="ABEER BLUESTAR SOCCER FEST 2K25",
     page_icon="⚽",
@@ -34,22 +39,27 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ====================== STYLING ===================================
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Styling / Themes
+# ──────────────────────────────────────────────────────────────────────────────
 def inject_advanced_css():
     st.markdown(
         """
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root{
-          --sticky-tabs-top: 52px;
-        }
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+        <style>
+          :root{
+            /* Adjust if you need the sticky tabs to sit lower/higher under Streamlit header */
+            --sticky-tabs-top: 52px;
+          }
 
-        .stApp {
+          .stApp {
             font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .block-container {
+          }
+
+          .block-container {
             padding-top: 0.5rem;
             padding-bottom: 2rem;
             max-width: 98vw;
@@ -61,14 +71,17 @@ def inject_advanced_css():
             margin: 1rem auto;
             position: relative;
             z-index: 1;
-        }
+          }
 
-        #MainMenu, footer, .stDeployButton,
-        div[data-testid="stDecoration"],
-        div[data-testid="stStatusWidget"] { display: none !important; }
+          /* Hide some Streamlit chrome we don't need */
+          #MainMenu, footer, .stDeployButton,
+          div[data-testid="stDecoration"],
+          div[data-testid="stStatusWidget"] {
+            display: none !important;
+          }
 
-        /* ----- STICKY TABS ----- */
-        .block-container [data-testid="stTabs"]:first-of-type{
+          /* Sticky first tabs bar */
+          .block-container [data-testid="stTabs"]:first-of-type{
             position: sticky;
             top: var(--sticky-tabs-top);
             z-index: 6;
@@ -78,28 +91,28 @@ def inject_advanced_css():
             padding-top: .25rem;
             padding-bottom: .25rem;
             margin-top: .25rem;
-        }
+          }
 
-        /* Title */
-        .app-title{
+          /* App Title */
+          .app-title{
             display:flex; align-items:center; justify-content:center; gap:12px;
             margin: .75rem 0 1.0rem;
-        }
-        .app-title .ball{
+          }
+          .app-title .ball{
             font-size: 32px; line-height:1;
             filter: drop-shadow(0 2px 4px rgba(0,0,0,.15));
-        }
-        .app-title .title{
+          }
+          .app-title .title{
             font-weight:700; letter-spacing:.05em;
             font-size: clamp(22px, 3.5vw, 36px);
             background: linear-gradient(45deg, #0ea5e9, #1e40af, #7c3aed);
             -webkit-background-clip: text; background-clip: text;
             -webkit-text-fill-color: transparent;
             text-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
+          }
 
-        /* Buttons */
-        .stButton > button, .stDownloadButton > button {
+          /* Buttons */
+          .stButton > button, .stDownloadButton > button {
             background: linear-gradient(135deg, #0ea5e9, #3b82f6) !important;
             color: white !important;
             border: 0 !important;
@@ -109,82 +122,47 @@ def inject_advanced_css():
             font-size: 0.9rem !important;
             transition: all 0.3s ease !important;
             box-shadow: 0 4px 15px rgba(14, 165, 233, 0.3) !important;
-        }
-        .stButton > button:hover, .stDownloadButton > button:hover {
+          }
+          .stButton > button:hover, .stDownloadButton > button:hover {
             transform: translateY(-2px) !important;
             box-shadow: 0 8px 25px rgba(14, 165, 233, 0.4) !important;
             filter: brightness(1.05) !important;
-        }
+          }
 
-        /* Dataframes */
-        .stDataFrame { border-radius: 15px !important; overflow: hidden !important; box-shadow: 0 8px 32px rgba(0,0,0,0.08) !important; }
+          /* Dataframes */
+          .stDataFrame {
+            border-radius: 15px !important;
+            overflow: hidden !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.08) !important;
+          }
 
-        /* Metric cards */
-        .metric-container {
+          /* Metric cards */
+          .metric-container {
             background: linear-gradient(135deg, rgba(14,165,233,.1), rgba(59,130,246,.05));
             border-radius: 15px;
             padding: 1.5rem;
             border-left: 4px solid #0ea5e9;
             box-shadow: 0 4px 20px rgba(14,165,233,.1);
             transition: transform .2s ease;
-        }
-        .metric-container:hover { transform: translateY(-3px); }
+          }
+          .metric-container:hover { transform: translateY(-3px); }
 
-        /* Sidebar status pill */
-        .status-pill { padding:.5rem .75rem; border-radius:.6rem; font-size:.85rem; margin-top:.5rem; }
-        .status-ok  { background:#ecfeff; border-left:4px solid #06b6d4; color:#155e75; }
-        .status-warn{ background:#fef9c3; border-left:4px solid #f59e0b; color:#713f12; }
-        .status-err { background:#fee2e2; border-left:4px solid #ef4444; color:#7f1d1d; }
+          /* Sidebar status pill */
+          .status-pill { padding:.5rem .75rem; border-radius:.6rem; font-size:.85rem; margin-top:.5rem; }
+          .status-ok  { background:#ecfeff; border-left:4px solid #06b6d4; color:#155e75; }
+          .status-warn{ background:#fef9c3; border-left:4px solid #f59e0b; color:#713f12; }
+          .status-err { background:#fee2e2; border-left:4px solid #ef4444; color:#7f1d1d; }
 
-        /* -------- Light Player Cards -------- */
-        .player-grid{
-            display:grid;
-            grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
-            gap:16px;
-        }
-        .pcard{
-            background:#fff;
-            border:1px solid #e5e7eb;
-            border-radius:16px;
-            padding:20px 18px;
-            box-shadow: 0 10px 24px rgba(0,0,0,.06);
-            transition: transform .15s ease, box-shadow .15s ease;
-        }
-        .pcard:hover{ transform: translateY(-3px); box-shadow: 0 16px 32px rgba(0,0,0,.08); }
-        .pcard h3{
-            margin:.25rem 0 .35rem 0;
-            font-size:1.35rem;
-            line-height:1.2;
-        }
-        .pcard .sub{ color:#4b5563; font-size:.95rem; margin-bottom:.25rem; }
-        .pcard .muted{ color:#9ca3af; font-size:.9rem; margin-bottom:.5rem; }
-        .pcard .row{ display:flex; align-items:center; gap:10px; margin:.45rem 0; }
-        .pcard .label{ min-width:132px; color:#111827; }
-        .pcard .dotbar{
-            flex:1; height:14px; background:#f3f4f6; border-radius:999px; overflow:hidden; border:1px solid #e5e7eb;
-        }
-        .pcard .dotbar > span{
-            display:block; height:100%;
-            background:linear-gradient(90deg,#fb923c,#f97316);
-            width:var(--pct,0%);
-        }
-        .pcard .num{ width:36px; text-align:right; font-variant-numeric:tabular-nums; }
-        .pcard .pill{
-            display:inline-block; margin-top:.4rem;
-            background:#fff7ed; color:#92400e; border:1px dashed #fdba74;
-            font-size:.85rem; padding:.35rem .6rem; border-radius:999px;
-        }
-
-        @media (max-width: 768px) {
+          @media (max-width: 768px) {
             .block-container { padding: 1rem .5rem; margin: .5rem; width: 95vw; max-width: 95vw; }
             .app-title .ball{font-size:24px;}
-        }
-    </style>
-    """,
+          }
+        </style>
+        """,
         unsafe_allow_html=True,
     )
 
-    # Altair theme
+    # Altair theme (consistent fonts/colors)
     alt.themes.register(
         "tournament_theme",
         lambda: {
@@ -207,8 +185,8 @@ def inject_advanced_css():
                 },
                 "range": {
                     "category": [
-                        "#0ea5e9","#34d399","#60a5fa","#f59e0b",
-                        "#f87171","#a78bfa","#fb7185","#4ade80",
+                        "#0ea5e9", "#34d399", "#60a5fa", "#f59e0b",
+                        "#f87171", "#a78bfa", "#fb7185", "#4ade80",
                     ]
                 },
             }
@@ -216,16 +194,21 @@ def inject_advanced_css():
     )
     alt.themes.enable("tournament_theme")
 
+
 def notify(msg: str, kind: str = "ok"):
     cls = {"ok": "status-ok", "warn": "status-warn", "err": "status-err"}.get(kind, "status-ok")
     st.markdown(f'<div class="status-pill {cls}">{msg}</div>', unsafe_allow_html=True)
 
-# ---------- Watermark ----------
-def add_world_cup_watermark(*, image_path: str | None = None,
-                            image_url: str | None = None,
-                            opacity: float = 0.08,
-                            size: str = "68vmin",
-                            y_offset: str = "6vh"):
+
+def add_world_cup_watermark(
+    *,
+    image_path: str | None = None,
+    image_url: str | None = None,
+    opacity: float = 0.08,
+    size: str = "68vmin",
+    y_offset: str = "6vh",
+):
+    """Places a giant faint trophy behind the app."""
     if image_path:
         ext = "svg+xml" if image_path.lower().endswith(".svg") else "png"
         b64 = base64.b64encode(Path(image_path).read_bytes()).decode()
@@ -237,28 +220,33 @@ def add_world_cup_watermark(*, image_path: str | None = None,
 
     st.markdown(
         f"""
-    <style>
-      #wc-trophy {{
-        position: fixed;
-        inset: 0;
-        background-image: {bg};
-        background-repeat: no-repeat;
-        background-position: center {y_offset};
-        background-size: {size};
-        opacity: {opacity};
-        pointer-events: none;
-        z-index: 0;
-      }}
-    </style>
-    <div id="wc-trophy"></div>
-    """,
+        <style>
+          #wc-trophy {{
+            position: fixed;
+            inset: 0;
+            background-image: {bg};
+            background-repeat: no-repeat;
+            background-position: center {y_offset};
+            background-size: {size};
+            opacity: {opacity};
+            pointer-events: none;
+            z-index: 0; /* below content; block-container has z-index:1 */
+          }}
+        </style>
+        <div id="wc-trophy"></div>
+        """,
         unsafe_allow_html=True,
     )
 
-# ====================== DATA PROCESSING ===========================
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Data processing (robust .xlsx ingestion)
+# ──────────────────────────────────────────────────────────────────────────────
 def parse_xlsx_without_dependencies(file_bytes: bytes) -> pd.DataFrame:
+    """OpenXML parser for a simple 3-column sheet (Team, Player, Goals) per division area."""
     ns = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     with zipfile.ZipFile(BytesIO(file_bytes)) as z:
+        # Shared strings (for string-type cell references)
         shared = []
         if "xl/sharedStrings.xml" in z.namelist():
             with z.open("xl/sharedStrings.xml") as f:
@@ -284,6 +272,7 @@ def parse_xlsx_without_dependencies(file_bytes: bytes) -> pd.DataFrame:
                     for ch in col_letters:
                         col_idx = col_idx * 26 + (ord(ch) - 64)
                     col_idx -= 1
+
                     ctype = cell.attrib.get("t")
                     v = cell.find("main:v", ns)
                     val = v.text if v is not None else None
@@ -300,7 +289,9 @@ def parse_xlsx_without_dependencies(file_bytes: bytes) -> pd.DataFrame:
     matrix = [[r.get(i) for i in range(max_col + 1)] for r in rows]
     return pd.DataFrame(matrix)
 
+
 def safe_read_excel(file_source) -> pd.DataFrame:
+    """Try pandas, fall back to manual parser if engine not available."""
     if isinstance(file_source, (str, Path)):
         with open(file_source, "rb") as f:
             file_bytes = f.read()
@@ -314,6 +305,7 @@ def safe_read_excel(file_source) -> pd.DataFrame:
     except Exception:
         return parse_xlsx_without_dependencies(file_bytes)
 
+
 def find_division_columns(raw_df: pd.DataFrame):
     b_col, a_col = None, None
     for row_idx in range(min(2, len(raw_df))):
@@ -323,10 +315,12 @@ def find_division_columns(raw_df: pd.DataFrame):
                 b_col = col_idx
             elif "a division" in cell and a_col is None:
                 a_col = col_idx
+    # very defensive fallback
     if b_col is None and a_col is None:
         b_col = 0
         a_col = 5 if raw_df.shape[1] >= 8 else (4 if raw_df.shape[1] >= 7 else None)
     return b_col, a_col
+
 
 def process_tournament_data(xlsx_bytes: bytes) -> pd.DataFrame:
     raw_df = safe_read_excel(xlsx_bytes)
@@ -336,13 +330,12 @@ def process_tournament_data(xlsx_bytes: bytes) -> pd.DataFrame:
     b_start, a_start = find_division_columns(raw_df)
     header_row = 1 if len(raw_df) > 1 else 0
     data_start_row = header_row + 1
-
     processed = []
 
     def extract_div(start_col: int | None, name: str):
         if start_col is None or start_col + 2 >= raw_df.shape[1]:
             return
-        df = raw_df.iloc[data_start_row:, start_col:start_col + 3].copy()
+        df = raw_df.iloc[data_start_row:, start_col : start_col + 3].copy()
         df.columns = ["Team", "Player", "Goals"]
         df = df.dropna(subset=["Team", "Player", "Goals"])
         df["Goals"] = pd.to_numeric(df["Goals"], errors="coerce")
@@ -359,6 +352,7 @@ def process_tournament_data(xlsx_bytes: bytes) -> pd.DataFrame:
     out = pd.DataFrame(processed)
     return out[["Division", "Team", "Player", "Goals"]]
 
+
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_tournament_data(url: str) -> pd.DataFrame:
     try:
@@ -370,7 +364,10 @@ def fetch_tournament_data(url: str) -> pd.DataFrame:
     except Exception:
         return pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
 
-# ====================== ANALYTICS FUNCTIONS =======================
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Analytics helpers
+# ──────────────────────────────────────────────────────────────────────────────
 def calculate_tournament_stats(df: pd.DataFrame) -> dict:
     if df.empty:
         return {
@@ -396,6 +393,7 @@ def calculate_tournament_stats(df: pd.DataFrame) -> dict:
         "competitive_balance": round(team_totals["Goals"].std(), 2) if len(team_totals) > 1 else 0,
     }
 
+
 def get_top_performers(df: pd.DataFrame, top_n: int = 10) -> dict:
     if df.empty:
         return {"players": pd.DataFrame(), "teams": pd.DataFrame()}
@@ -415,13 +413,19 @@ def get_top_performers(df: pd.DataFrame, top_n: int = 10) -> dict:
     )
     return {"players": top_players, "teams": top_teams}
 
+
 def create_division_comparison(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
     division_stats = (
         df.groupby("Division")
-        .agg(Goals_sum=("Goals", "sum"), Goals_mean=("Goals", "mean"), Records=("Goals", "count"),
-             Teams=("Team", "nunique"), Players=("Player", "nunique"))
+        .agg(
+            Goals_sum=("Goals", "sum"),
+            Goals_mean=("Goals", "mean"),
+            Records=("Goals", "count"),
+            Teams=("Team", "nunique"),
+            Players=("Player", "nunique"),
+        )
         .round(2)
         .reset_index()
         .rename(columns={"Goals_sum": "Total_Goals", "Goals_mean": "Avg_Goals", "Records": "Total_Records"})
@@ -430,7 +434,10 @@ def create_division_comparison(df: pd.DataFrame) -> pd.DataFrame:
     division_stats["Goal_Share_Pct"] = (division_stats["Total_Goals"] / total_goals * 100).round(1) if total_goals else 0
     return division_stats
 
-# ====================== VISUALIZATION =============================
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Visualizations
+# ──────────────────────────────────────────────────────────────────────────────
 def create_horizontal_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title: str, color_scheme: str = "blues") -> alt.Chart:
     if df.empty:
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
@@ -440,25 +447,41 @@ def create_horizontal_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title:
         alt.Chart(df)
         .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6, opacity=0.85, stroke="white", strokeWidth=1)
         .encode(
-            x=alt.X(f"{x_col}:Q", title="Goals", axis=alt.Axis(format="d", tickMinStep=1, values=tick_values, gridOpacity=0.3), scale=alt.Scale(domainMin=0, nice=False)),
+            x=alt.X(
+                f"{x_col}:Q",
+                title="Goals",
+                axis=alt.Axis(format="d", tickMinStep=1, values=tick_values, gridOpacity=0.3),
+                scale=alt.Scale(domainMin=0, nice=False),
+            ),
             y=alt.Y(f"{y_col}:N", sort="-x", title=None, axis=alt.Axis(labelLimit=200)),
             color=alt.Color(f"{x_col}:Q", scale=alt.Scale(scheme=color_scheme), legend=None),
             tooltip=[alt.Tooltip(f"{y_col}:N", title=y_col), alt.Tooltip(f"{x_col}:Q", title="Goals", format="d")],
         )
-        .properties(height=max(300, min(600, len(df) * 25)), title=alt.TitleParams(text=title, fontSize=16, anchor="start", fontWeight=600))
+        .properties(
+            height=max(300, min(600, len(df) * 25)),
+            title=alt.TitleParams(text=title, fontSize=16, anchor="start", fontWeight=600),
+        )
         .resolve_scale(color="independent")
     )
+
 
 def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
     if df.empty:
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
+
     division_data = df.groupby("Division")["Goals"].sum().reset_index()
     sel = alt.selection_single(fields=["Division"], empty="none")
+
     base = (
         alt.Chart(division_data)
         .add_selection(sel)
-        .properties(width=300, height=300, title=alt.TitleParams(text="Goals Distribution by Division", fontSize=16, fontWeight=600))
+        .properties(
+            width=300,
+            height=300,
+            title=alt.TitleParams(text="Goals Distribution by Division", fontSize=16, fontWeight=600),
+        )
     )
+
     outer = (
         base.mark_arc(innerRadius=60, outerRadius=120, stroke="white", strokeWidth=2)
         .encode(
@@ -468,26 +491,43 @@ def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
             tooltip=["Division:N", alt.Tooltip("Goals:Q", format="d")],
         )
     )
-    center_text = base.mark_text(align="center", baseline="middle", fontSize=18, fontWeight="bold", color="#1e293b").encode(
-        text=alt.value(f"Total\n{int(division_data['Goals'].sum())}")
+
+    center_text = (
+        base.mark_text(align="center", baseline="middle", fontSize=18, fontWeight="bold", color="#1e293b")
+        .encode(text=alt.value(f"Total\n{int(division_data['Goals'].sum())}"))
     )
+
     return outer + center_text
+
 
 def create_advanced_scatter_plot(df: pd.DataFrame):
     if df.empty:
         if PLOTLY_AVAILABLE:
-            fig = go.Figure(); fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False); return fig
+            fig = go.Figure()
+            fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False)
+            return fig
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
+
     team_stats = df.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Goals=("Goals", "sum")).reset_index()
+
     if PLOTLY_AVAILABLE:
         fig = px.scatter(
-            team_stats, x="Players", y="Goals", color="Division", size="Goals",
-            hover_name="Team", hover_data={"Players": True, "Goals": True},
+            team_stats,
+            x="Players",
+            y="Goals",
+            color="Division",
+            size="Goals",
+            hover_name="Team",
+            hover_data={"Players": True, "Goals": True},
             title="Team Performance: Players vs Total Goals",
         )
-        fig.update_traces(marker=dict(sizemode="diameter", sizemin=8, sizemax=30, line=dict(width=2, color="white"), opacity=0.85))
+        fig.update_traces(
+            marker=dict(sizemode="diameter", sizemin=8, sizemax=30, line=dict(width=2, color="white"), opacity=0.85)
+        )
         fig.update_layout(
-            plot_bgcolor="white", paper_bgcolor="white", font=dict(family="Poppins", size=12),
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            font=dict(family="Poppins", size=12),
             title=dict(font=dict(size=16, color="#1e293b")),
             xaxis=dict(title="Number of Players in Team", gridcolor="#f1f5f9", zeroline=False),
             yaxis=dict(title="Total Goals", gridcolor="#f1f5f9", zeroline=False),
@@ -495,6 +535,7 @@ def create_advanced_scatter_plot(df: pd.DataFrame):
             height=400,
         )
         return fig
+
     return (
         alt.Chart(team_stats)
         .mark_circle(size=100, opacity=0.85)
@@ -508,26 +549,43 @@ def create_advanced_scatter_plot(df: pd.DataFrame):
         .properties(title="Team Performance: Players vs Total Goals", height=400)
     )
 
+
 def create_goals_distribution_histogram(df: pd.DataFrame):
     if df.empty:
         if PLOTLY_AVAILABLE:
-            fig = go.Figure(); fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False); return fig
+            fig = go.Figure()
+            fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False)
+            return fig
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
+
     player_goals = df.groupby(["Player", "Team"])["Goals"].sum().values
     if PLOTLY_AVAILABLE:
         fig = go.Figure(
-            data=[go.Histogram(x=player_goals, nbinsx=max(1, len(set(player_goals))), marker_line_color="white", marker_line_width=1.5, opacity=0.85,
-                               hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>")]
+            data=[
+                go.Histogram(
+                    x=player_goals,
+                    nbinsx=max(1, len(set(player_goals))),
+                    marker_line_color="white",
+                    marker_line_width=1.5,
+                    opacity=0.85,
+                    hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>",
+                )
+            ]
         )
         fig.update_layout(
             title="Distribution of Goals per Player",
-            xaxis_title="Goals per Player", yaxis_title="Number of Players",
-            plot_bgcolor="white", paper_bgcolor="white", font=dict(family="Poppins", size=12),
+            xaxis_title="Goals per Player",
+            yaxis_title="Number of Players",
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            font=dict(family="Poppins", size=12),
             title_font=dict(size=16, color="#1e293b"),
-            xaxis=dict(gridcolor="#f1f5f9", zeroline=False), yaxis=dict(gridcolor="#f1f5f9", zeroline=False),
+            xaxis=dict(gridcolor="#f1f5f9", zeroline=False),
+            yaxis=dict(gridcolor="#f1f5f9", zeroline=False),
             height=400,
         )
         return fig
+
     hist_df = pd.DataFrame({"Goals": player_goals})
     return (
         alt.Chart(hist_df)
@@ -540,12 +598,25 @@ def create_goals_distribution_histogram(df: pd.DataFrame):
         .properties(title="Distribution of Goals per Player", height=400)
     )
 
-# ====================== UI PARTS ==================================
+
+# ──────────────────────────────────────────────────────────────────────────────
+# UI helpers
+# ──────────────────────────────────────────────────────────────────────────────
 def display_metric_cards(stats: dict):
     c1, c2, c3 = st.columns(3)
-    c1.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_goals']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">TOTAL GOALS</div></div>""", unsafe_allow_html=True)
-    c2.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_players']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">PLAYERS</div></div>""", unsafe_allow_html=True)
-    c3.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_teams']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">TEAMS</div></div>""", unsafe_allow_html=True)
+    c1.markdown(
+        f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_goals']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">TOTAL GOALS</div></div>""",
+        unsafe_allow_html=True,
+    )
+    c2.markdown(
+        f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_players']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">PLAYERS</div></div>""",
+        unsafe_allow_html=True,
+    )
+    c3.markdown(
+        f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_teams']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">TEAMS</div></div>""",
+        unsafe_allow_html=True,
+    )
+
 
 def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
     if df.empty:
@@ -572,11 +643,11 @@ def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
     with col1:
         st.markdown(
             f"""
-        <div style="background:white;padding:1.5rem;border-radius:15px;box-shadow:0 4px 20px rgba(0,0,0,.05);border-left:4px solid #0ea5e9;margin-bottom:1rem;">
-            <div style="font-weight:600;color:#0ea5e9;margin-bottom:.5rem;font-size:1.1rem;">🏆 Top Performing Team</div>
-            <div style="color:#374151;line-height:1.5;"><strong>{top_team_name}</strong> leads with <strong>{top_team_goals} goals</strong>.</div>
-        </div>
-        """,
+            <div style="background:white;padding:1.5rem;border-radius:15px;box-shadow:0 4px 20px rgba(0,0,0,.05);border-left:4px solid #0ea5e9;margin-bottom:1rem;">
+                <div style="font-weight:600;color:#0ea5e9;margin-bottom:.5rem;font-size:1.1rem;">🏆 Top Performing Team</div>
+                <div style="color:#374151;line-height:1.5;"><strong>{html_escape(str(top_team_name))}</strong> leads with <strong>{top_team_goals} goals</strong>.</div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
 
@@ -584,31 +655,32 @@ def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
             def get_vals(div):
                 s = division_cmp[division_cmp["Division"] == div]
                 return (int(s["Total_Goals"].iloc[0]), s["Goal_Share_Pct"].iloc[0]) if not s.empty else (0, 0)
+
             b_goals, b_pct = get_vals("B Division")
             a_goals, a_pct = get_vals("A Division")
 
             st.markdown(
                 f"""
-            <div style="background:white;padding:1.5rem;border-radius:15px;box-shadow:0 4px 20px rgba(0,0,0,.05);border-left:4px solid #f59e0b;margin-bottom:1rem;">
-                <div style="font-weight:600;color:#f59e0b;margin-bottom:.5rem;font-size:1.1rem;">🎯 Division Performance</div>
-                <div style="color:#374151;line-height:1.5;">
-                    <strong>B Division:</strong> {b_goals} goals ({b_pct}%)<br>
-                    <strong>A Division:</strong> {a_goals} goals ({a_pct}%)<br>
-                    {"B Division shows higher scoring activity" if b_goals > a_goals else ("A Division leads in goal production" if a_goals > b_goals else "Both divisions are evenly matched")}
+                <div style="background:white;padding:1.5rem;border-radius:15px;box-shadow:0 4px 20px rgba(0,0,0,.05);border-left:4px solid #f59e0b;margin-bottom:1rem;">
+                    <div style="font-weight:600;color:#f59e0b;margin-bottom:.5rem;font-size:1.1rem;">🎯 Division Performance</div>
+                    <div style="color:#374151;line-height:1.5;">
+                        <strong>B Division:</strong> {b_goals} goals ({b_pct}%)<br>
+                        <strong>A Division:</strong> {a_goals} goals ({a_pct}%)<br>
+                        {"B Division shows higher scoring activity" if b_goals > a_goals else ("A Division leads in goal production" if a_goals > b_goals else "Both divisions are evenly matched")}
+                    </div>
                 </div>
-            </div>
-            """,
+                """,
                 unsafe_allow_html=True,
             )
 
     with col2:
         st.markdown(
             f"""
-        <div style="background:white;padding:1.5rem;border-radius:15px;box-shadow:0 4px 20px rgba(0,0,0,.05);border-left:4px solid #34d399;margin-bottom:1rem;">
-            <div style="font-weight:600;color:#34d399;margin-bottom:.5rem;font-size:1.1rem;">⚽ Leading Scorer</div>
-            <div style="color:#374151;line-height:1.5;"><strong>{top_player_name}</strong> ({top_player_team}) with <strong>{top_player_goals} goals</strong>.</div>
-        </div>
-        """,
+            <div style="background:white;padding:1.5rem;border-radius:15px;box-shadow:0 4px 20px rgba(0,0,0,.05);border-left:4px solid #34d399;margin-bottom:1rem;">
+                <div style="font-weight:600;color:#34d399;margin-bottom:.5rem;font-size:1.1rem;">⚽ Leading Scorer</div>
+                <div style="color:#374151;line-height:1.5;"><strong>{html_escape(str(top_player_name))}</strong> ({html_escape(str(top_player_team))}) with <strong>{top_player_goals} goals</strong>.</div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
 
@@ -618,21 +690,23 @@ def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
 
         st.markdown(
             f"""
-        <div style="background:white;padding:1.5rem;border-radius:15px;box-shadow:0 4px 20px rgba(0,0,0,.05);border-left:4px solid #a78bfa;margin-bottom:1rem;">
-            <div style="font-weight:600;color:#a78bfa;margin-bottom:.5rem;font-size:1.1rem;">📊 Competition Balance</div>
-            <div style="color:#374151;line-height:1.5;">
-                <strong>{goals_1} players</strong> scored 1 goal, <strong>{goals_2_plus} players</strong> scored 2+ goals<br>
-                {
-                    "Well-balanced competition" if stats['competitive_balance'] < 2
-                    else ("Some teams dominating" if stats['competitive_balance'] > 4 else "Moderate competition spread")
-                }
+            <div style="background:white;padding:1.5rem;border-radius:15px;box-shadow:0 4px 20px rgba(0,0,0,.05);border-left:4px solid #a78bfa;margin-bottom:1rem;">
+                <div style="font-weight:600;color:#a78bfa;margin-bottom:.5rem;font-size:1.1rem;">📊 Competition Balance</div>
+                <div style="color:#374151;line-height:1.5;">
+                    <strong>{goals_1} players</strong> scored 1 goal, <strong>{goals_2_plus} players</strong> scored 2+ goals<br>
+                    {
+                        "Well-balanced competition" if stats['competitive_balance'] < 2
+                        else ("Some teams dominating" if stats['competitive_balance'] > 4 else "Moderate competition spread")
+                    }
+                </div>
             </div>
-        </div>
-        """,
+            """,
             unsafe_allow_html=True,
         )
 
+
 def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "records"):
+    """Used in other tabs (Teams/Overview). Players tab no longer uses a table."""
     if df.empty:
         st.info(f"📋 No {table_type} data available with current filters.")
         return
@@ -652,7 +726,12 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "records"):
         )
 
     elif table_type == "teams":
-        teams_summary = df.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Total_Goals=("Goals", "sum")).reset_index()
+        teams_summary = (
+            df.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Total_Goals=("Goals", "sum")).reset_index()
+        )
+        teams_summary = teams_summary.sort_values("Total_Goals", ascending=False)
+
+        # Add top scorer per team for context
         top_rows = []
         for team in teams_summary["Team"].unique():
             team_data = df[df["Team"] == team]
@@ -661,7 +740,8 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "records"):
             s = team_data.groupby("Player")["Goals"].sum()
             top_rows.append({"Team": team, "Top_Scorer": s.idxmax(), "Top_Scorer_Goals": int(s.max())})
         top_df = pd.DataFrame(top_rows)
-        teams_display = teams_summary.merge(top_df, on="Team", how="left").sort_values("Total_Goals", ascending=False)
+
+        teams_display = teams_summary.merge(top_df, on="Team", how="left")
 
         st.dataframe(
             teams_display,
@@ -694,49 +774,6 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "records"):
             },
         )
 
-# -------- Player cards (exact model, fixed 0/50/100 bar) --------
-def render_player_cards(df: pd.DataFrame):
-    cards = []
-    for _, row in df.iterrows():
-        goals = int(row.get("Goals", 0) or 0)
-        apps = int(row.get("Appearances", 0) or 0)
-        yel = int(row.get("Yellow Cards", 0) or 0)
-        red = int(row.get("Red Cards", 0) or 0)
-
-        # scale goal bar: 0=0%, 1=50%, >=2=100%
-        g_pct = "0%" if goals == 0 else "50%" if goals == 1 else "100%"
-
-        card_html = f"""
-        <div class="pcard">
-            <h3>{row['Player']}</h3>
-            <div class="sub">{row['Team']} • {row['Division']} • Age —</div>
-            <div class="muted">—</div>
-
-            <div class="row"><div class="label">⚽ Goals</div>
-                <div class="dotbar"><span style="--pct:{g_pct}"></span></div>
-                <div class="num">{goals}</div></div>
-
-            <div class="row"><div class="label">👕 Appearances</div>
-                <div class="dotbar"><span style="--pct:0%"></span></div>
-                <div class="num">{apps}</div></div>
-
-            <div class="row"><div class="label">🟨 Yellow Cards</div>
-                <div class="dotbar"><span style="--pct:0%"></span></div>
-                <div class="num">{yel}</div></div>
-
-            <div class="row"><div class="label">🟥 Red Cards</div>
-                <div class="dotbar"><span style="--pct:0%"></span></div>
-                <div class="num">{red}</div></div>
-
-            <span class="pill">No awards</span>
-        </div>
-        """
-        cards.append(card_html)
-
-    # join all cards into a grid
-    html = '<div class="player-grid">' + "\n".join(cards) + "</div>"
-    st.markdown(html, unsafe_allow_html=True)   # <-- key fix
-
 
 def create_comprehensive_zip_report(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
     zip_buffer = BytesIO()
@@ -747,8 +784,13 @@ def create_comprehensive_zip_report(full_df: pd.DataFrame, filtered_df: pd.DataF
             z.writestr("02_filtered_tournament_data.csv", filtered_df.to_csv(index=False))
             teams = (
                 filtered_df.groupby(["Team", "Division"])
-                .agg(Unique_Players=("Player", "nunique"), Total_Records=("Goals", "count"), Total_Goals=("Goals", "sum"),
-                     Avg_Goals=("Goals", "mean"), Max_Goals=("Goals", "max"))
+                .agg(
+                    Unique_Players=("Player", "nunique"),
+                    Total_Records=("Goals", "count"),
+                    Total_Goals=("Goals", "sum"),
+                    Avg_Goals=("Goals", "mean"),
+                    Max_Goals=("Goals", "max"),
+                )
                 .round(2)
                 .reset_index()
             )
@@ -762,9 +804,13 @@ def create_comprehensive_zip_report(full_df: pd.DataFrame, filtered_df: pd.DataF
                 z.writestr("05_division_comparison.csv", div_cmp.to_csv(index=False))
             stats = calculate_tournament_stats(filtered_df)
             z.writestr("06_tournament_statistics.csv", pd.DataFrame([stats]).to_csv(index=False))
-        z.writestr("README.txt", f"ABEER BLUESTAR SOCCER FEST 2K25 - Data Package\nGenerated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        z.writestr(
+            "README.txt",
+            f"ABEER BLUESTAR SOCCER FEST 2K25 - Data Package\nGenerated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
+        )
     zip_buffer.seek(0)
     return zip_buffer.getvalue()
+
 
 def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
     st.subheader("📥 Download Reports")
@@ -827,32 +873,220 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 help="Download ZIP containing all data, summaries, and analytics",
             )
 
-# ====================== MAIN APPLICATION ==========================
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PLAYERS CARD MODEL (HTML rendered via st.components.html)
+# ──────────────────────────────────────────────────────────────────────────────
+def build_players_cards_html(players_df: pd.DataFrame) -> str:
+    """
+    Build the HTML for the players grid using your desired card model.
+    We ONLY use Goals (from sheet). Appearances, YC, RC are set to 0 (matching your screenshot).
+    """
+
+    if players_df.empty:
+        return """
+        <div style="padding:1rem;border-radius:12px;background:#fff;border:1px solid #e5e7eb;">
+          No players available for the current filters.
+        </div>
+        """
+
+    # Aggregate to 1 row per player (Player, Team, Division, Goals)
+    agg = (
+        players_df.groupby(["Player", "Team", "Division"])["Goals"]
+        .sum()
+        .reset_index()
+        .sort_values(["Goals", "Player"], ascending=[False, True])
+    )
+
+    max_goals = max(int(agg["Goals"].max()), 1)
+
+    # Grid & Card CSS + Theme
+    css = """
+    <style>
+      /* Container grid */
+      .pgrid{
+        display:grid;
+        gap:16px;
+        grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+      }
+
+      .pcard{
+        background:#0b1324;               /* deep navy like your screenshot */
+        color:#e5e7eb;
+        border-radius:16px;
+        padding:16px 16px 12px 16px;
+        border:1px solid rgba(148,163,184,.18);
+        box-shadow:0 8px 24px rgba(2,6,23,.35);
+      }
+
+      .pcard h3{
+        margin:0 0 8px 0;
+        font-size:1.15rem;
+        line-height:1.35;
+        font-weight:700;
+      }
+
+      .pcard .sub{
+        font-size:.9rem;
+        color:#cbd5e1;
+      }
+
+      .pcard .muted{
+        color:#9aa4b2;
+        font-size:.9rem;
+        margin:.15rem 0 .25rem;
+      }
+
+      .row{
+        display:grid;
+        grid-template-columns:auto 1fr auto;
+        align-items:center;
+        gap:10px;
+        margin:.5rem 0;
+      }
+
+      .label{
+        font-size:.9rem;
+        opacity:.95;
+        white-space:nowrap;
+      }
+
+      .dotbar{
+        position:relative;
+        height:10px;
+        border-radius:999px;
+        background:#111827;
+        border:1px solid rgba(148,163,184,.18);
+        overflow:hidden;
+      }
+      .dotbar > span{
+        position:absolute;
+        inset:0;
+        width:var(--pct,0%);
+        height:100%;
+        background:linear-gradient(90deg,#fb923c,#ef4444);
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+        transition:width .4s ease;
+      }
+
+      .num{
+        width:32px;
+        text-align:right;
+        font-variant-numeric:tabular-nums;
+        color:#f1f5f9;
+      }
+
+      .pill{
+        display:inline-block;
+        margin-top:.5rem;
+        padding:.25rem .55rem;
+        border-radius:9999px;
+        font-size:.75rem;
+        background:#0a0f1d;
+        color:#fbbf24;
+        border:1px dashed rgba(251,191,36,.4);
+        opacity:.9;
+      }
+
+      /* Light helper: small divider at top inside card */
+      .pcard:before{
+        content:"";
+        display:block;
+        height:2px;
+        width:36px;
+        background:linear-gradient(90deg,#3b82f6,#22d3ee);
+        border-radius:999px;
+        opacity:.75;
+        margin-bottom:8px;
+      }
+
+      @media (max-width: 600px){
+        .pgrid{ gap:12px; }
+        .pcard{ padding:14px; }
+      }
+    </style>
+    """
+
+    # Build cards
+    cards = []
+    for _, r in agg.iterrows():
+        player = html_escape(str(r["Player"]))
+        team = html_escape(str(r["Team"]))
+        division = html_escape(str(r["Division"]))
+        goals = int(r["Goals"])
+        pct = int(round(100 * goals / max_goals))
+
+        cards.append(
+            f"""
+            <div class="pcard">
+              <h3>{player}</h3>
+              <div class="sub">{team} • {division} • Age —</div>
+              <div class="muted">—</div>
+
+              <div class="row">
+                <div class="label">⚽ Goals</div>
+                <div class="dotbar"><span style="--pct:{pct}%"></span></div>
+                <div class="num">{goals}</div>
+              </div>
+
+              <div class="row">
+                <div class="label">👕 Appearances</div>
+                <div class="dotbar"><span style="--pct:0%"></span></div>
+                <div class="num">0</div>
+              </div>
+
+              <div class="row">
+                <div class="label">🟨 Yellow Cards</div>
+                <div class="dotbar"><span style="--pct:0%"></span></div>
+                <div class="num">0</div>
+              </div>
+
+              <div class="row">
+                <div class="label">🟥 Red Cards</div>
+                <div class="dotbar"><span style="--pct:0%"></span></div>
+                <div class="num">0</div>
+              </div>
+
+              <span class="pill">No awards</span>
+            </div>
+            """
+        )
+
+    return css + '<div class="pgrid">' + "\n".join(cards) + "</div>"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Main
+# ──────────────────────────────────────────────────────────────────────────────
 def main():
     inject_advanced_css()
 
     # Title
-    st.markdown("""
-<div class="app-title">
-  <span class="ball">⚽</span>
-  <span class="title">ABEER BLUESTAR SOCCER FEST 2K25</span>
-</div>
-""", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="app-title">
+          <span class="ball">⚽</span>
+          <span class="title">ABEER BLUESTAR SOCCER FEST 2K25</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    # Trophy background
+    # Trophy
     add_world_cup_watermark(
         image_url="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f3c6.svg",
         opacity=0.10,
         size="68vmin",
-        y_offset="6vh"
+        y_offset="6vh",
     )
 
+    # Data source (published Google Sheet -> .xlsx)
     GOOGLE_SHEETS_URL = (
         "https://docs.google.com/spreadsheets/d/e/"
         "2PACX-1vRpCD-Wh_NnGQjJ1Mh3tuU5Mdcl8TK41JopMUcSnfqww8wkPXKKgRyg7v4sC_vuUw/pub?output=xlsx"
     )
 
-    # Sidebar
+    # Sidebar: controls + filters
     with st.sidebar:
         st.header("🎛️ Dashboard Controls")
 
@@ -866,7 +1100,6 @@ def main():
         st.caption(f"🕒 Last refreshed: {last_refresh}")
         st.divider()
 
-        # Load data
         with st.spinner("📡 Loading tournament data…"):
             tournament_data = fetch_tournament_data(GOOGLE_SHEETS_URL)
 
@@ -910,7 +1143,7 @@ def main():
         if selected_players:
             tournament_data = tournament_data[tournament_data["Player"].isin(selected_players)]
 
-    # Tabs
+    # Tabs (first tab bar is sticky via CSS)
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         ["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📥 DOWNLOADS"]
     )
@@ -918,11 +1151,12 @@ def main():
     current_stats = calculate_tournament_stats(tournament_data)
     top_performers = get_top_performers(tournament_data, 10)
 
-    # TAB 1
+    # ── OVERVIEW ───────────────────────────────────────────────────────────────
     with tab1:
         st.header("📊 Tournament Overview")
         display_metric_cards(current_stats)
         st.divider()
+
         col1, col2 = st.columns([2, 1])
         with col1:
             st.subheader("🎯 Goal Scoring Records")
@@ -931,21 +1165,30 @@ def main():
             if not tournament_data.empty:
                 st.subheader("🏁 Division Distribution")
                 st.altair_chart(create_division_donut_chart(tournament_data), use_container_width=True)
+
         if not tournament_data.empty:
             c1, c2 = st.columns(2)
             with c1:
                 st.subheader("🏆 Goals by Team")
-                team_goals = tournament_data.groupby("Team")["Goals"].sum().reset_index().sort_values("Goals", ascending=False).head(10)
+                team_goals = (
+                    tournament_data.groupby("Team")["Goals"].sum().reset_index().sort_values("Goals", ascending=False).head(10)
+                )
                 if not team_goals.empty:
-                    st.altair_chart(create_horizontal_bar_chart(team_goals, "Goals", "Team", "Top 10 Teams by Goals", "blues"), use_container_width=True)
+                    st.altair_chart(
+                        create_horizontal_bar_chart(team_goals, "Goals", "Team", "Top 10 Teams by Goals", "blues"),
+                        use_container_width=True,
+                    )
             with c2:
                 st.subheader("⚽ Top Scorers")
                 if not top_performers["players"].empty:
                     ts = top_performers["players"].head(10).copy()
                     ts["Display_Name"] = ts["Player"] + " (" + ts["Team"] + ")"
-                    st.altair_chart(create_horizontal_bar_chart(ts, "Goals", "Display_Name", "Top 10 Players by Goals", "greens"), use_container_width=True)
+                    st.altair_chart(
+                        create_horizontal_bar_chart(ts, "Goals", "Display_Name", "Top 10 Players by Goals", "greens"),
+                        use_container_width=True,
+                    )
 
-    # TAB 2
+    # ── QUICK INSIGHTS ────────────────────────────────────────────────────────
     with tab2:
         st.header("⚡ Quick Tournament Insights")
         c1, c2, c3, c4 = st.columns(4)
@@ -954,7 +1197,10 @@ def main():
         c3.metric("🏆 Teams", current_stats["total_teams"])
         c4.metric("📊 Divisions", current_stats["divisions"])
         st.divider()
-        display_insights_cards(tournament_data, "Current View" if len(tournament_data) < len(full_tournament_data) else "Tournament")
+        display_insights_cards(
+            tournament_data,
+            "Current View" if len(tournament_data) < len(full_tournament_data) else "Tournament",
+        )
         if tournament_data["Division"].nunique() > 1:
             st.subheader("🔄 Division Comparison")
             division_comparison = create_division_comparison(tournament_data)
@@ -973,7 +1219,7 @@ def main():
                     },
                 )
 
-    # TAB 3
+    # ── TEAMS ─────────────────────────────────────────────────────────────────
     with tab3:
         st.header("🏆 Teams Analysis")
         if tournament_data.empty:
@@ -983,16 +1229,32 @@ def main():
             create_enhanced_data_table(tournament_data, "teams")
             st.divider()
             st.subheader("📊 Team Performance Analysis")
-            team_analysis = tournament_data.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Goals=("Goals", "sum")).reset_index().sort_values("Goals", ascending=False)
+            team_analysis = (
+                tournament_data.groupby(["Team", "Division"])
+                .agg(Players=("Player", "nunique"), Goals=("Goals", "sum"))
+                .reset_index()
+                .sort_values("Goals", ascending=False)
+            )
             if not team_analysis.empty:
-                st.altair_chart(create_horizontal_bar_chart(team_analysis.head(15), "Goals", "Team", "Team Goals Distribution", "viridis"), use_container_width=True)
+                st.altair_chart(
+                    create_horizontal_bar_chart(
+                        team_analysis.head(15), "Goals", "Team", "Team Goals Distribution", "viridis"
+                    ),
+                    use_container_width=True,
+                )
 
-    # TAB 4 — Player card grid (no table)
+    # ── PLAYERS (Card Model Only) ─────────────────────────────────────────────
     with tab4:
         st.header("👤 Player Profiles")
-        render_player_cards(tournament_data)
+        if tournament_data.empty:
+            st.info("🔍 No players match your current filters.")
+        else:
+            # Build & render the card grid as real HTML (NO table, NO code block).
+            cards_html = build_players_cards_html(tournament_data)
+            # Use components.html so it's rendered (not shown as text)
+            st.components.v1.html(cards_html, height=900, scrolling=True)
 
-    # TAB 5
+    # ── ANALYTICS ─────────────────────────────────────────────────────────────
     with tab5:
         st.header("📈 Advanced Analytics")
         if tournament_data.empty:
@@ -1019,7 +1281,7 @@ def main():
                 st.markdown("**⚽ Scoring Patterns**")
                 counts = tournament_data["Goals"].value_counts().sort_index()
                 for g, c in counts.items():
-                    pct = (c / len(tournament_data) * 100)
+                    pct = c / len(tournament_data) * 100
                     st.write(f"• **{int(g)} goal{'s' if g != 1 else ''}**: {int(c)} records ({pct:.1f}%)")
             with c3:
                 st.markdown("**🎯 Division Insights**")
@@ -1031,11 +1293,14 @@ def main():
                     st.write(f"  - {total_goals} total goals")
                     st.write(f"  - {unique_players} unique players")
 
-    # TAB 6
+    # ── DOWNLOADS ─────────────────────────────────────────────────────────────
     with tab6:
         create_download_section(full_tournament_data, tournament_data)
 
-# ====================== ENTRY POINT ===============================
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Entry
+# ──────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     if "last_refresh" not in st.session_state:
         st.session_state["last_refresh"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1044,4 +1309,3 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
         st.exception(e)
-
