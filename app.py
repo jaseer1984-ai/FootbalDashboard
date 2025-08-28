@@ -1,6 +1,10 @@
 # ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard
 # Author: AI Assistant | Updated: 2025-08-28
-# Changes: Removed all "AVG GOALS/PLAYER", hid Active Filters Summary & footer text
+# Changes in this version:
+# - Removed the "Quick Filters → Minimum goals per player" slider (hidden completely)
+# - Player Search now uses a type-to-search multiselect of player names
+# - Previous requests kept: no "AVG GOALS/PLAYER" card/lines, Active Filters Summary + footer removed,
+#   header visible (so sidebar toggle works)
 
 from __future__ import annotations
 
@@ -30,7 +34,7 @@ st.set_page_config(
     page_title="ABEER BLUESTAR SOCCER FEST 2K25",
     page_icon="⚽",
     layout="wide",
-    initial_sidebar_state="expanded",  # Sidebar opens by default
+    initial_sidebar_state="expanded",  # Sidebar opens by default; toggle lives in header
 )
 
 # ====================== STYLING ===================================
@@ -56,7 +60,8 @@ def inject_advanced_css():
             margin: 1rem auto;
         }
 
-        /* Keep header visible so sidebar toggle appears; hide some chrome */
+        /* Keep header visible so the sidebar toggle appears.
+           Hide some chrome but NOT the header/toolbar. */
         #MainMenu, footer, .stDeployButton,
         div[data-testid="stDecoration"],
         div[data-testid="stStatusWidget"] {
@@ -301,7 +306,7 @@ def calculate_tournament_stats(df: pd.DataFrame) -> dict:
             "total_players": 0,
             "total_teams": 0,
             "divisions": 0,
-            "avg_goals_per_team": 0,   # kept
+            "avg_goals_per_team": 0,
             "top_scorer_goals": 0,
             "competitive_balance": 0,
         }
@@ -314,7 +319,6 @@ def calculate_tournament_stats(df: pd.DataFrame) -> dict:
         "total_players": len(player_totals),
         "total_teams": len(team_totals),
         "divisions": df["Division"].nunique(),
-        # removed avg_goals_per_player
         "avg_goals_per_team": round(df["Goals"].sum() / max(1, len(team_totals)), 2),
         "top_scorer_goals": int(player_totals["Goals"].max()) if not player_totals.empty else 0,
         "competitive_balance": round(team_totals["Goals"].std(), 2) if len(team_totals) > 1 else 0,
@@ -378,7 +382,7 @@ def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
     division_data = df.groupby("Division")["Goals"].sum().reset_index()
     sel = alt.selection_single(fields=["Division"], empty="none")
-    base = alt.Chart(division_data).add_selection(sel).properties(width=300, height=300, title=alt.TitleParams(text="Goals Distribution by Division", fontSize=16, fontWeight=600))
+    base = alt.Chart(division_data).add_selection(sel).properties(width=300, height=300, title=alt.TitleParams(text="Goals Distribution by Division", fontSize=16, FontWeight=600))
     outer = (
         base.mark_arc(innerRadius=60, outerRadius=120, stroke="white", strokeWidth=2)
         .encode(
@@ -484,7 +488,7 @@ def create_goals_distribution_histogram(df: pd.DataFrame):
 
 # ====================== UI COMPONENTS =============================
 def display_metric_cards(stats: dict):
-    c1, c2, c3 = st.columns(3)  # removed 4th slot
+    c1, c2, c3 = st.columns(3)
     c1.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_goals']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">TOTAL GOALS</div></div>""", unsafe_allow_html=True)
     c2.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_players']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">PLAYERS</div></div>""", unsafe_allow_html=True)
     c3.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_teams']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">TEAMS</div></div>""", unsafe_allow_html=True)
@@ -554,7 +558,7 @@ def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
             unsafe_allow_html=True,
         )
 
-        # Removed "Average: X goals per player" line
+        # Competition balance (no avg-per-player line)
         player_goals = df.groupby(["Player", "Team"])["Goals"].sum()
         goals_1 = int((player_goals == 1).sum())
         goals_2_plus = int((player_goals >= 2).sum())
@@ -661,7 +665,6 @@ def create_comprehensive_zip_report(full_df: pd.DataFrame, filtered_df: pd.DataF
             if not div_cmp.empty:
                 z.writestr("05_division_comparison.csv", div_cmp.to_csv(index=False))
             stats = calculate_tournament_stats(filtered_df)
-            # stats no longer includes avg_goals_per_player
             z.writestr("06_tournament_statistics.csv", pd.DataFrame([stats]).to_csv(index=False))
         z.writestr(
             "README.txt",
@@ -769,38 +772,41 @@ def main():
 
         st.header("🔍 Data Filters")
 
+        # Division filter
         division_options = ["All Divisions"] + sorted(tournament_data["Division"].unique().tolist())
         selected_division = st.selectbox("📊 Division", division_options, key="division_filter")
         if selected_division != "All Divisions":
             tournament_data = tournament_data[tournament_data["Division"] == selected_division]
 
+        # Team filter
         available_teams = sorted(tournament_data["Team"].unique().tolist())
-        selected_teams = st.multiselect("🏆 Teams (optional)", available_teams, key="teams_filter", help="Select specific teams to focus on")
+        selected_teams = st.multiselect(
+            "🏆 Teams (optional)",
+            available_teams,
+            key="teams_filter",
+            help="Select specific teams to focus on",
+            placeholder="Type to search teams…",
+        )
         if selected_teams:
             tournament_data = tournament_data[tournament_data["Team"].isin(selected_teams)]
 
+        # Player search (type-to-search list)
         st.subheader("👤 Player Search")
-        player_query = st.text_input("Search players (comma-separated, partial matches OK)", value="", key="player_search", help="Example: Ahmed, Mohammed, Al-")
-        if player_query.strip():
-            terms = [t.strip().lower() for t in player_query.split(",") if t.strip()]
-            if terms:
-                player_col = tournament_data["Player"].astype(str).str.lower()
-                mask = pd.Series(False, index=tournament_data.index)
-                for t in terms:
-                    mask = mask | player_col.str.contains(t, na=False, regex=False)
-                tournament_data = tournament_data[mask]
+        player_names = sorted(tournament_data["Player"].dropna().astype(str).unique().tolist())
+        selected_players = st.multiselect(
+            "Type to search and select players",
+            options=player_names,
+            default=[],
+            key="players_filter",
+            placeholder="Start typing a player name…",
+            help="Type to search. You can select one or multiple players.",
+        )
+        if selected_players:
+            tournament_data = tournament_data[tournament_data["Player"].isin(selected_players)]
 
-        st.subheader("🥇 Quick Filters")
-        max_goals_all = int(max(1, int(full_tournament_data["Goals"].max()) if not full_tournament_data.empty else 1))
-        min_goals = st.slider("Minimum goals per player", min_value=1, max_value=max_goals_all, value=1, key="min_goals_filter")
-        player_totals = tournament_data.groupby(["Player", "Team"])["Goals"].sum()
-        qualifying = player_totals[player_totals >= min_goals].index
-        if len(qualifying) > 0:
-            tournament_data = tournament_data[tournament_data.set_index(["Player", "Team"]).index.isin(qualifying)].reset_index(drop=True)
+        # NOTE: Quick Filters (min goals per player) — removed per request
 
-        # ---------------- HIDDEN: Active Filters Summary ----------------
-        # (Removed per request)
-        # ----------------------------------------------------------------
+        # (Active Filters Summary block previously here — removed per request)
 
     # Tabs
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📥 DOWNLOADS"])
@@ -903,7 +909,6 @@ def main():
                 st.subheader("📊 Player Statistics")
                 player_goals = tournament_data.groupby(["Player", "Team"])["Goals"].sum()
                 st.metric("🎯 Highest Individual Score", int(player_goals.max()) if not player_goals.empty else 0)
-                # Removed: Average Goals per Player metric
                 st.metric("👥 Players with 2+ Goals", int((player_goals >= 2).sum()))
                 st.metric("⚽ Single Goal Scorers", int((player_goals == 1).sum()))
 
@@ -952,9 +957,7 @@ def main():
     with tab6:
         create_download_section(full_tournament_data, tournament_data)
 
-    # ---------------- HIDDEN: Footer blurb block ----------------
-    # (Removed per request)
-    # ------------------------------------------------------------
+    # Footer blurb removed per request
 
 # ====================== ENTRY POINT ===============================
 if __name__ == "__main__":
