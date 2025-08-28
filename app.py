@@ -1,9 +1,7 @@
-# ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard
+# ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard (with Player Cards)
 # Author: AI Assistant | Updated: 2025-08-28
-# Adds "Player Profile Cards" inside the PLAYERS tab (below ranking table)
 
 from __future__ import annotations
-
 import base64
 from datetime import datetime
 from io import BytesIO
@@ -38,118 +36,95 @@ st.set_page_config(
 def inject_advanced_css():
     st.markdown(
         """
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root{ --sticky-tabs-top: 52px; }
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{ --sticky-tabs-top: 52px; }
 
-        .stApp {
-            font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .block-container {
-            padding-top: 0.5rem;
-            padding-bottom: 2rem;
-            max-width: 98vw;
-            width: 98vw;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(15px);
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
-            margin: 1rem auto;
-            position: relative;
-            z-index: 1;
-        }
+.stApp{ font-family:'Poppins',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+        background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); }
+.block-container{
+  padding-top:.5rem; padding-bottom:2rem; max-width:98vw; width:98vw;
+  background:rgba(255,255,255,.95); backdrop-filter:blur(15px); border-radius:20px;
+  box-shadow:0 20px 40px rgba(0,0,0,.15); margin:1rem auto; position:relative; z-index:1;
+}
 
-        #MainMenu, footer, .stDeployButton,
-        div[data-testid="stDecoration"],
-        div[data-testid="stStatusWidget"] { display: none !important; }
+/* Hide Streamlit chrome we don't need */
+#MainMenu, footer, .stDeployButton, div[data-testid="stDecoration"], div[data-testid="stStatusWidget"]{ display:none !important; }
 
-        /* Sticky first tabs row */
-        .block-container [data-testid="stTabs"]:first-of-type{
-            position: sticky;
-            top: var(--sticky-tabs-top);
-            z-index: 6;
-            background: rgba(255,255,255,0.96);
-            backdrop-filter: blur(8px);
-            border-bottom: 1px solid #e2e8f0;
-            padding-top: .25rem;
-            padding-bottom: .25rem;
-            margin-top: .25rem;
-        }
+/* Sticky first tab bar */
+.block-container [data-testid="stTabs"]:first-of-type{
+  position:sticky; top:var(--sticky-tabs-top); z-index:6;
+  background:rgba(255,255,255,.96); backdrop-filter:blur(8px);
+  border-bottom:1px solid #e2e8f0; padding:.25rem 0; margin-top:.25rem;
+}
 
-        /* App title */
-        .app-title{ display:flex; align-items:center; justify-content:center; gap:12px; margin: .75rem 0 1.0rem; }
-        .app-title .ball{ font-size: 32px; line-height:1; filter: drop-shadow(0 2px 4px rgba(0,0,0,.15)); }
-        .app-title .title{
-            font-weight:700; letter-spacing:.05em;
-            font-size: clamp(22px, 3.5vw, 36px);
-            background: linear-gradient(45deg, #0ea5e9, #1e40af, #7c3aed);
-            -webkit-background-clip: text; background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
+/* Title */
+.app-title{ display:flex; align-items:center; justify-content:center; gap:12px; margin:.75rem 0 1rem; }
+.app-title .ball{ font-size:32px; line-height:1; filter:drop-shadow(0 2px 4px rgba(0,0,0,.15)); }
+.app-title .title{ font-weight:700; letter-spacing:.05em; font-size:clamp(22px,3.5vw,36px);
+  background:linear-gradient(45deg,#0ea5e9,#1e40af,#7c3aed);
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+  text-shadow:0 2px 4px rgba(0,0,0,.1);
+}
 
-        /* Buttons */
-        .stButton > button, .stDownloadButton > button {
-            background: linear-gradient(135deg, #0ea5e9, #3b82f6) !important;
-            color: white !important;
-            border: 0 !important;
-            border-radius: 12px !important;
-            padding: 0.6rem 1.2rem !important;
-            font-weight: 600 !important;
-            font-size: 0.9rem !important;
-            transition: all 0.3s ease !important;
-            box-shadow: 0 4px 15px rgba(14, 165, 233, 0.3) !important;
-        }
-        .stButton > button:hover, .stDownloadButton > button:hover {
-            transform: translateY(-2px) !important;
-            box-shadow: 0 8px 25px rgba(14, 165, 233, 0.4) !important;
-            filter: brightness(1.05) !important;
-        }
+/* Buttons */
+.stButton > button, .stDownloadButton > button{
+  background:linear-gradient(135deg,#0ea5e9,#3b82f6)!important; color:white!important;
+  border:0!important; border-radius:12px!important; padding:.6rem 1.2rem!important;
+  font-weight:600!important; font-size:.9rem!important; transition:.3s!important;
+  box-shadow:0 4px 15px rgba(14,165,233,.3)!important;
+}
+.stButton > button:hover, .stDownloadButton > button:hover{
+  transform:translateY(-2px)!important; box-shadow:0 8px 25px rgba(14,165,233,.4)!important;
+  filter:brightness(1.05)!important;
+}
 
-        /* Dataframes */
-        .stDataFrame { border-radius: 15px !important; overflow: hidden !important; box-shadow: 0 8px 32px rgba(0,0,0,0.08) !important; }
+/* Dataframes */
+.stDataFrame{ border-radius:15px!important; overflow:hidden!important; box-shadow:0 8px 32px rgba(0,0,0,.08)!important; }
 
-        /* Metric cards */
-        .metric-container {
-            background: linear-gradient(135deg, rgba(14,165,233,.1), rgba(59,130,246,.05));
-            border-radius: 15px;
-            padding: 1.5rem;
-            border-left: 4px solid #0ea5e9;
-            box-shadow: 0 4px 20px rgba(14,165,233,.1);
-            transition: transform .2s ease;
-        }
-        .metric-container:hover { transform: translateY(-3px); }
+/* Metric cards */
+.metric-container{
+  background:linear-gradient(135deg,rgba(14,165,233,.1),rgba(59,130,246,.05));
+  border-radius:15px; padding:1.5rem; border-left:4px solid #0ea5e9;
+  box-shadow:0 4px 20px rgba(14,165,233,.1); transition:transform .2s ease;
+}
+.metric-container:hover{ transform:translateY(-3px); }
 
-        /* Sidebar status pill */
-        .status-pill { padding:.5rem .75rem; border-radius:.6rem; font-size:.85rem; margin-top:.5rem; }
-        .status-ok  { background:#ecfeff; border-left:4px solid #06b6d4; color:#155e75; }
-        .status-warn{ background:#fef9c3; border-left:4px solid #f59e0b; color:#713f12; }
-        .status-err { background:#fee2e2; border-left:4px solid #ef4444; color:#7f1d1d; }
+/* Sidebar status pill */
+.status-pill{ padding:.5rem .75rem; border-radius:.6rem; font-size:.85rem; margin-top:.5rem; }
+.status-ok{ background:#ecfeff; border-left:4px solid #06b6d4; color:#155e75; }
+.status-warn{ background:#fef9c3; border-left:4px solid #f59e0b; color:#713f12; }
+.status-err{ background:#fee2e2; border-left:4px solid #ef4444; color:#7f1d1d; }
 
-        /* -------- Player Profile Cards -------- */
-        .player-grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));margin-top:.5rem}
-        .player-card{background:#0f172a;color:#e2e8f0;border-radius:16px;overflow:hidden;box-shadow:0 10px 24px rgba(2,6,23,.35);border:1px solid rgba(148,163,184,.15)}
-        .pc-top{display:grid;grid-template-columns:120px 1fr;gap:16px;padding:16px;align-items:center}
-        .pc-fig{background:#d9e6a5;height:120px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#0f172a;font-weight:700}
-        .pc-name{font-size:1.1rem;font-weight:700;letter-spacing:.03em}
-        .pc-sub{opacity:.85;font-size:.85rem}
-        .pc-body{padding:16px;border-top:1px solid rgba(148,163,184,.15)}
-        .pc-row{display:flex;align-items:center;gap:10px;margin:.4rem 0}
-        .pc-label{width:140px;font-size:.82rem;opacity:.85}
-        .pc-bar{flex:1;height:16px;background:#1f2937;border-radius:10px;overflow:hidden;position:relative;border:1px solid rgba(148,163,184,.12)}
-        .pc-bar>span{display:block;height:100%;background:linear-gradient(90deg,#f97316,#ef4444);width:var(--pct,0%);transition:width .4s ease}
-        .pc-num{width:54px;text-align:right;font-variant-numeric:tabular-nums}
-        .pc-footer{display:flex;gap:8px;padding:12px 16px 16px;flex-wrap:wrap}
-        .pc-pill{background:#111827;color:#fbbf24;border:1px dashed rgba(251,191,36,.35);padding:.25rem .5rem;border-radius:999px;font-size:.75rem}
+/* ---------- PLAYER CARDS ---------- */
+.player-grid{ display:grid; gap:16px; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); margin-top:.5rem; }
+.player-card{
+  background:#0f172a; color:#e2e8f0; border-radius:16px; overflow:hidden;
+  box-shadow:0 10px 24px rgba(2,6,23,.35); border:1px solid rgba(148,163,184,.15);
+}
+.pc-top{ display:grid; grid-template-columns:120px 1fr; gap:16px; padding:16px; align-items:center; }
+.pc-fig{
+  background:#d9e6a5; height:120px; border-radius:12px; display:flex; align-items:center; justify-content:center;
+  color:#0f172a; font-weight:700;
+}
+.pc-name{ font-size:1.1rem; font-weight:700; letter-spacing:.03em; }
+.pc-sub{ opacity:.85; font-size:.85rem; }
+.pc-body{ padding:16px; border-top:1px solid rgba(148,163,184,.15); }
+.pc-row{ display:flex; align-items:center; gap:10px; margin:.4rem 0; }
+.pc-label{ width:140px; font-size:.82rem; opacity:.85; }
+.pc-bar{ flex:1; height:16px; background:#1f2937; border-radius:10px; overflow:hidden; position:relative; border:1px solid rgba(148,163,184,.12);}
+.pc-bar>span{ display:block; height:100%; background:linear-gradient(90deg,#f97316,#ef4444); width:var(--pct,0%); transition:width .4s ease; }
+.pc-num{ width:54px; text-align:right; font-variant-numeric:tabular-nums; }
+.pc-footer{ display:flex; gap:8px; padding:12px 16px 16px; flex-wrap:wrap; }
+.pc-pill{ background:#111827; color:#fbbf24; border:1px dashed rgba(251,191,36,.35); padding:.25rem .5rem; border-radius:999px; font-size:.75rem; }
 
-        @media (max-width: 768px) {
-            .block-container { padding: 1rem .5rem; margin: .5rem; width: 95vw; max-width: 95vw; }
-            .app-title .ball{font-size:24px;}
-        }
-    </style>
-    """,
+@media (max-width: 768px){
+  .block-container{ padding:1rem .5rem; margin:.5rem; width:95vw; max-width:95vw; }
+  .app-title .ball{ font-size:24px; }
+}
+</style>
+""",
         unsafe_allow_html=True,
     )
 
@@ -189,13 +164,12 @@ def notify(msg: str, kind: str = "ok"):
     cls = {"ok": "status-ok", "warn": "status-warn", "err": "status-err"}.get(kind, "status-ok")
     st.markdown(f'<div class="status-pill {cls}">{msg}</div>', unsafe_allow_html=True)
 
-# ---------- Robust Trophy watermark (DOM element, not :before) ----------
+# ---------- Robust Trophy watermark ----------
 def add_world_cup_watermark(*, image_path: str | None = None,
                             image_url: str | None = None,
-                            opacity: float = 0.08,
+                            opacity: float = 0.10,
                             size: str = "68vmin",
                             y_offset: str = "6vh"):
-    """Shows a big, faint trophy behind the whole app."""
     if image_path:
         ext = "svg+xml" if image_path.lower().endswith(".svg") else "png"
         b64 = base64.b64encode(Path(image_path).read_bytes()).decode()
@@ -207,21 +181,15 @@ def add_world_cup_watermark(*, image_path: str | None = None,
 
     st.markdown(
         f"""
-    <style>
-      #wc-trophy {{
-        position: fixed;
-        inset: 0;
-        background-image: {bg};
-        background-repeat: no-repeat;
-        background-position: center {y_offset};
-        background-size: {size};
-        opacity: {opacity};
-        pointer-events: none;
-        z-index: 0;
-      }}
-    </style>
-    <div id="wc-trophy"></div>
-    """,
+<style>
+  #wc-trophy {{
+    position: fixed; inset: 0; background-image: {bg}; background-repeat: no-repeat;
+    background-position: center {y_offset}; background-size: {size};
+    opacity: {opacity}; pointer-events: none; z-index: 0;
+  }}
+</style>
+<div id="wc-trophy"></div>
+""",
         unsafe_allow_html=True,
     )
 
@@ -344,13 +312,8 @@ def fetch_tournament_data(url: str) -> pd.DataFrame:
 def calculate_tournament_stats(df: pd.DataFrame) -> dict:
     if df.empty:
         return {
-            "total_goals": 0,
-            "total_players": 0,
-            "total_teams": 0,
-            "divisions": 0,
-            "avg_goals_per_team": 0,
-            "top_scorer_goals": 0,
-            "competitive_balance": 0,
+            "total_goals": 0, "total_players": 0, "total_teams": 0, "divisions": 0,
+            "avg_goals_per_team": 0, "top_scorer_goals": 0, "competitive_balance": 0,
         }
 
     player_totals = df.groupby(["Player", "Team", "Division"])["Goals"].sum().reset_index()
@@ -371,162 +334,91 @@ def get_top_performers(df: pd.DataFrame, top_n: int = 10) -> dict:
         return {"players": pd.DataFrame(), "teams": pd.DataFrame()}
     top_players = (
         df.groupby(["Player", "Team", "Division"])["Goals"]
-        .sum()
-        .reset_index()
+        .sum().reset_index()
         .sort_values(["Goals", "Player"], ascending=[False, True])
         .head(top_n)
     )
     top_teams = (
         df.groupby(["Team", "Division"])["Goals"]
-        .sum()
-        .reset_index()
+        .sum().reset_index()
         .sort_values("Goals", ascending=False)
         .head(top_n)
     )
     return {"players": top_players, "teams": top_teams}
 
 def create_division_comparison(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return pd.DataFrame()
+    if df.empty: return pd.DataFrame()
     division_stats = (
         df.groupby("Division")
-        .agg(Goals_sum=("Goals", "sum"), Goals_mean=("Goals", "mean"), Records=("Goals", "count"),
-             Teams=("Team", "nunique"), Players=("Player", "nunique"))
+        .agg(Goals_sum=("Goals","sum"), Goals_mean=("Goals","mean"),
+             Records=("Goals","count"), Teams=("Team","nunique"),
+             Players=("Player","nunique"))
         .round(2)
         .reset_index()
-        .rename(columns={"Goals_sum": "Total_Goals", "Goals_mean": "Avg_Goals", "Records": "Total_Records"})
+        .rename(columns={"Goals_sum":"Total_Goals","Goals_mean":"Avg_Goals","Records":"Total_Records"})
     )
     total_goals = division_stats["Total_Goals"].sum()
     division_stats["Goal_Share_Pct"] = (division_stats["Total_Goals"] / total_goals * 100).round(1) if total_goals else 0
     return division_stats
 
-# ====================== VISUALIZATION FUNCTIONS ===================
+# ====================== VISUALIZATION HELPERS =====================
 def create_horizontal_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title: str, color_scheme: str = "blues") -> alt.Chart:
     if df.empty:
-        return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
+        return alt.Chart(pd.DataFrame({"note":["No data available"]})).mark_text().encode(text="note:N")
     max_val = int(df[x_col].max()) if not df.empty else 1
     tick_values = list(range(0, max_val + 1)) if max_val <= 50 else None
     return (
         alt.Chart(df)
-        .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6, opacity=0.85, stroke="white", strokeWidth=1)
+        .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6, opacity=.85, stroke="white", strokeWidth=1)
         .encode(
-            x=alt.X(f"{x_col}:Q", title="Goals", axis=alt.Axis(format="d", tickMinStep=1, values=tick_values, gridOpacity=0.3), scale=alt.Scale(domainMin=0, nice=False)),
+            x=alt.X(f"{x_col}:Q", title="Goals", axis=alt.Axis(format="d", tickMinStep=1, values=tick_values, gridOpacity=.3),
+                    scale=alt.Scale(domainMin=0, nice=False)),
             y=alt.Y(f"{y_col}:N", sort="-x", title=None, axis=alt.Axis(labelLimit=200)),
             color=alt.Color(f"{x_col}:Q", scale=alt.Scale(scheme=color_scheme), legend=None),
             tooltip=[alt.Tooltip(f"{y_col}:N", title=y_col), alt.Tooltip(f"{x_col}:Q", title="Goals", format="d")],
         )
-        .properties(height=max(300, min(600, len(df) * 25)), title=alt.TitleParams(text=title, fontSize=16, anchor="start", fontWeight=600))
+        .properties(height=max(300, min(600, len(df)*25)), title=alt.TitleParams(text=title, fontSize=16, anchor="start", fontWeight=600))
         .resolve_scale(color="independent")
     )
 
 def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
     if df.empty:
-        return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
-
+        return alt.Chart(pd.DataFrame({"note":["No data available"]})).mark_text().encode(text="note:N")
     division_data = df.groupby("Division")["Goals"].sum().reset_index()
     sel = alt.selection_single(fields=["Division"], empty="none")
-
-    base = (
-        alt.Chart(division_data)
-        .add_selection(sel)
-        .properties(
-            width=300,
-            height=300,
-            title=alt.TitleParams(text="Goals Distribution by Division", fontSize=16, fontWeight=600),
-        )
+    base = alt.Chart(division_data).add_selection(sel).properties(width=300, height=300,
+           title=alt.TitleParams(text="Goals Distribution by Division", fontSize=16, fontWeight=600))
+    outer = base.mark_arc(innerRadius=60, outerRadius=120, stroke="white", strokeWidth=2).encode(
+        theta=alt.Theta("Goals:Q", title="Goals"),
+        color=alt.Color("Division:N", scale=alt.Scale(range=["#0ea5e9","#f59e0b"]), title="Division"),
+        opacity=alt.condition(sel, alt.value(1.0), alt.value(0.8)),
+        tooltip=["Division:N", alt.Tooltip("Goals:Q", format="d")],
     )
-
-    outer = (
-        base.mark_arc(innerRadius=60, outerRadius=120, stroke="white", strokeWidth=2)
-        .encode(
-            theta=alt.Theta("Goals:Q", title="Goals"),
-            color=alt.Color("Division:N", scale=alt.Scale(range=["#0ea5e9", "#f59e0b"]), title="Division"),
-            opacity=alt.condition(sel, alt.value(1.0), alt.value(0.8)),
-            tooltip=["Division:N", alt.Tooltip("Goals:Q", format="d")],
-        )
-    )
-
-    center_text = (
-        base.mark_text(align="center", baseline="middle", fontSize=18, fontWeight="bold", color="#1e293b")
-        .encode(text=alt.value(f"Total\n{int(division_data['Goals'].sum())}"))
-    )
-
+    center_text = base.mark_text(align="center", baseline="middle", fontSize=18, fontWeight="bold", color="#1e293b")\
+                      .encode(text=alt.value(f"Total\n{int(division_data['Goals'].sum())}"))
     return outer + center_text
-
-def create_advanced_scatter_plot(df: pd.DataFrame):
-    if df.empty:
-        if PLOTLY_AVAILABLE:
-            fig = go.Figure(); fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False); return fig
-        return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
-
-    team_stats = df.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Goals=("Goals", "sum")).reset_index()
-
-    if PLOTLY_AVAILABLE:
-        fig = px.scatter(
-            team_stats, x="Players", y="Goals", color="Division", size="Goals",
-            hover_name="Team", hover_data={"Players": True, "Goals": True},
-            title="Team Performance: Players vs Total Goals",
-        )
-        fig.update_traces(marker=dict(sizemode="diameter", sizemin=8, sizemax=30, line=dict(width=2, color="white"), opacity=0.85))
-        fig.update_layout(
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            font=dict(family="Poppins", size=12),
-            title=dict(font=dict(size=16, color="#1e293b")),
-            xaxis=dict(title="Number of Players in Team", gridcolor="#f1f5f9", zeroline=False),
-            yaxis=dict(title="Total Goals", gridcolor="#f1f5f9", zeroline=False),
-            legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
-            height=400,
-        )
-        return fig
-
-    return (
-        alt.Chart(team_stats)
-        .mark_circle(size=100, opacity=0.85)
-        .encode(
-            x=alt.X("Players:Q", title="Number of Players in Team"),
-            y=alt.Y("Goals:Q", title="Total Goals"),
-            color=alt.Color("Division:N", scale=alt.Scale(range=["#0ea5e9", "#f59e0b"]), title="Division"),
-            size=alt.Size("Goals:Q", legend=None),
-            tooltip=["Team:N", "Division:N", "Players:Q", "Goals:Q"],
-        )
-        .properties(title="Team Performance: Players vs Total Goals", height=400)
-    )
 
 def create_goals_distribution_histogram(df: pd.DataFrame):
     if df.empty:
         if PLOTLY_AVAILABLE:
             fig = go.Figure(); fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False); return fig
-        return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
-
-    player_goals = df.groupby(["Player", "Team"])["Goals"].sum().values
+        return alt.Chart(pd.DataFrame({"note":["No data available"]})).mark_text().encode(text="note:N")
+    player_goals = df.groupby(["Player","Team"])["Goals"].sum().values
     if PLOTLY_AVAILABLE:
-        fig = go.Figure(
-            data=[go.Histogram(x=player_goals, nbinsx=max(1, len(set(player_goals))), marker_line_color="white", marker_line_width=1.5, opacity=0.85, hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>")]
-        )
-        fig.update_layout(
-            title="Distribution of Goals per Player",
-            xaxis_title="Goals per Player",
-            yaxis_title="Number of Players",
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            font=dict(family="Poppins", size=12),
-            title_font=dict(size=16, color="#1e293b"),
-            xaxis=dict(gridcolor="#f1f5f9", zeroline=False),
-            yaxis=dict(gridcolor="#f1f5f9", zeroline=False),
-            height=400,
-        )
+        fig = go.Figure(data=[go.Histogram(x=player_goals, nbinsx=max(1, len(set(player_goals))),
+                                           marker_line_color="white", marker_line_width=1.5, opacity=.85,
+                                           hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>")])
+        fig.update_layout(title="Distribution of Goals per Player", xaxis_title="Goals per Player", yaxis_title="Number of Players",
+                          plot_bgcolor="white", paper_bgcolor="white", font=dict(family="Poppins", size=12),
+                          title_font=dict(size=16, color="#1e293b"), xaxis=dict(gridcolor="#f1f5f9", zeroline=False),
+                          yaxis=dict(gridcolor="#f1f5f9", zeroline=False), height=400)
         return fig
-
     hist_df = pd.DataFrame({"Goals": player_goals})
     return (
-        alt.Chart(hist_df)
-        .mark_bar(opacity=0.85)
-        .encode(
-            x=alt.X("Goals:Q", bin=alt.Bin(maxbins=10), title="Goals per Player"),
-            y=alt.Y("count():Q", title="Number of Players"),
-            tooltip=[alt.Tooltip("Goals:Q", bin=True, title="Goals"), alt.Tooltip("count():Q", title="Players")],
-        )
+        alt.Chart(hist_df).mark_bar(opacity=.85)
+        .encode(x=alt.X("Goals:Q", bin=alt.Bin(maxbins=10), title="Goals per Player"),
+                y=alt.Y("count():Q", title="Number of Players"),
+                tooltip=[alt.Tooltip("Goals:Q", bin=True, title="Goals"), alt.Tooltip("count():Q", title="Players")])
         .properties(title="Distribution of Goals per Player", height=400)
     )
 
@@ -541,7 +433,6 @@ def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
     if df.empty:
         st.info("📊 No data available for insights.")
         return
-
     stats = calculate_tournament_stats(df)
     top_perf = get_top_performers(df, 5)
     division_cmp = create_division_comparison(df)
@@ -725,7 +616,6 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 data=full_df.to_csv(index=False),
                 file_name=f"tournament_full_data_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv",
-                help="Download complete tournament data",
             )
         if not filtered_df.empty:
             st.download_button(
@@ -733,7 +623,6 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 data=filtered_df.to_csv(index=False),
                 file_name=f"tournament_filtered_data_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv",
-                help="Download data with current filters applied",
             )
 
     with col2:
@@ -747,7 +636,6 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 data=teams_summary.to_csv(index=False),
                 file_name=f"teams_summary_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv",
-                help="Download team performance summary",
             )
 
             players_summary = filtered_df.groupby(["Player", "Team", "Division"])["Goals"].sum().reset_index()
@@ -758,105 +646,85 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 data=players_summary.to_csv(index=False),
                 file_name=f"players_summary_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv",
-                help="Download top scorers summary",
             )
 
     with col3:
         st.subheader("📦 Complete Package")
-        if st.button("📦 Generate Complete Report Package", help="Generate ZIP with all reports and analytics"):
+        if st.button("📦 Generate Complete Report Package"):
             z = create_comprehensive_zip_report(full_df, filtered_df)
             st.download_button(
                 label="⬇️ Download Complete Package (ZIP)",
                 data=z,
                 file_name=f"tournament_complete_package_{datetime.now().strftime('%Y%m%d_%H%M')}.zip",
                 mime="application/zip",
-                help="Download ZIP containing all data, summaries, and analytics",
             )
 
-# ====================== PLAYER CARD HELPERS =======================
-def _safe_int(x, default=0):
-    try:
-        if pd.isna(x):
-            return default
-        return int(float(x))
-    except Exception:
-        return default
-
-def build_player_profiles(df: pd.DataFrame) -> pd.DataFrame:
-    """Builds one row per player with optional columns: Appearances, Yellow, Red, Shirt, Age, Awards."""
+# ====================== PLAYER CARD RENDERING =====================
+def render_player_cards(df: pd.DataFrame):
+    """
+    Renders responsive player profile cards.
+    Uses df with columns: Division, Team, Player, Goals
+    Other stats default to 0 (you can map real columns later).
+    """
     if df.empty:
-        return pd.DataFrame(columns=["Player","Team","Division","Goals","Appearances","Yellow","Red","Shirt","Age","Awards"])
-    core = (
-        df.groupby(["Player","Team","Division"])["Goals"]
-        .sum().reset_index().rename(columns={"Goals":"Goals"})
-    )
-    optional_cols = ["Appearances","Yellow","Red","Shirt","Age","Awards"]
-    present = [c for c in optional_cols if c in df.columns]
-    if present:
-        extras = (
-            df.groupby(["Player","Team","Division"])[present]
-            .agg(lambda s: s.dropna().iloc[0] if not s.dropna().empty else None)
-            .reset_index()
-        )
-        out = core.merge(extras, on=["Player","Team","Division"], how="left")
-    else:
-        out = core.copy()
-        out["Appearances"]=0; out["Yellow"]=0; out["Red"]=0; out["Shirt"]="—"; out["Age"]="—"; out["Awards"]=None
-
-    def _awards_to_list(x):
-        if pd.isna(x) or x in [None, "", "nan", "None"]:
-            return []
-        if isinstance(x, list): return [str(a).strip() for a in x if str(a).strip()]
-        return [s.strip() for s in str(x).split(",") if s.strip()]
-
-    out["Appearances"]=out["Appearances"].apply(_safe_int)
-    out["Yellow"]=out["Yellow"].apply(_safe_int)
-    out["Red"]=out["Red"].apply(_safe_int)
-    out["Shirt"]=out["Shirt"].apply(lambda v: "—" if pd.isna(v) or str(v).strip()=="" else str(v).strip())
-    out["Age"]=out["Age"].apply(lambda v: "—" if pd.isna(v) or str(v).strip()=="" else str(v).strip())
-    out["Awards"]=out["Awards"].apply(_awards_to_list)
-    return out.sort_values(["Goals","Player"], ascending=[False, True]).reset_index(drop=True)
-
-def render_player_cards(profiles: pd.DataFrame):
-    if profiles.empty:
-        st.info("🔍 No players to show for current filters.")
+        st.info("📇 No players to show for the current filters.")
         return
-    max_goals = max(1, int(profiles["Goals"].max()))
-    max_apps  = max(1, int(profiles["Appearances"].max()))
-    max_y     = max(1, int(profiles["Yellow"].max()))
-    max_r     = max(1, int(profiles["Red"].max()))
-    pct = lambda v, m: f"{int(round(100 * _safe_int(v,0) / max(1,_safe_int(m,1))))}%"
 
-    cards = ["<div class='player-grid'>"]
-    for _, row in profiles.iterrows():
-        name=row["Player"]; team=row["Team"]; division=row["Division"]
-        shirt=row.get("Shirt","—") or "—"; age=row.get("Age","—") or "—"
-        g=_safe_int(row.get("Goals",0)); a=_safe_int(row.get("Appearances",0))
-        y=_safe_int(row.get("Yellow",0)); r=_safe_int(row.get("Red",0))
-        awards=row.get("Awards",[])
-        if not isinstance(awards, list): awards=[]
-        awards_html = " ".join([f"<span class='pc-pill'>{aw}</span>" for aw in awards]) or "<span class='pc-pill' style='opacity:.7;'>No awards</span>"
+    # Aggregate per player
+    agg = (df.groupby(["Player","Team","Division"])["Goals"].sum()
+             .reset_index()
+             .sort_values(["Goals","Player"], ascending=[False, True]))
+    max_goals = int(agg["Goals"].max()) if not agg.empty else 1
 
-        cards.append(f"""
-        <div class="player-card">
-          <div class="pc-top">
-            <div class="pc-fig">#{shirt}</div>
-            <div>
-              <div class="pc-name">{name}</div>
-              <div class="pc-sub">{team} • {division} • — • Age {age}</div>
-            </div>
-          </div>
-          <div class="pc-body">
-            <div class="pc-row"><div class="pc-label">Goals</div><div class="pc-bar"><span style="--pct:{pct(g,max_goals)}"></span></div><div class="pc-num">{g}</div></div>
-            <div class="pc-row"><div class="pc-label">Appearances</div><div class="pc-bar"><span style="--pct:{pct(a,max_apps)}"></span></div><div class="pc-num">{a}</div></div>
-            <div class="pc-row"><div class="pc-label">Yellow Cards</div><div class="pc-bar"><span style="--pct:{pct(y,max_y)}"></span></div><div class="pc-num">{y}</div></div>
-            <div class="pc-row"><div class="pc-label">Red Cards</div><div class="pc-bar"><span style="--pct:{pct(r,max_r)}"></span></div><div class="pc-num">{r}</div></div>
-          </div>
-          <div class="pc-footer">{awards_html}</div>
+    # Placeholder stats (wire to real columns if you add them)
+    agg["Appearances"] = 0
+    agg["Yellow"] = 0
+    agg["Red"] = 0
+
+    # Awards: Top Scorer tie-aware for current filtered view
+    top_goal_value = max_goals
+    agg["Awards"] = agg.apply(lambda r: ["Top Scorer"] if r["Goals"] == top_goal_value and top_goal_value > 0 else [], axis=1)
+
+    cards = []
+    for _, r in agg.iterrows():
+        name = str(r["Player"])
+        team = str(r["Team"])
+        div = str(r["Division"])
+        goals = int(r["Goals"])
+        apps = int(r["Appearances"])
+        yc = int(r["Yellow"])
+        rc = int(r["Red"])
+        # You can populate these if you have them:
+        shirt = "—"
+        age = "—"
+
+        pct = lambda val: f"{(min(val, max_goals)/max_goals)*100:.0f}%" if max_goals > 0 else "0%"
+
+        awards_html = " ".join(f"<span class='pc-pill'>{a}</span>" for a in (r["Awards"] or [])) or "<span class='pc-pill' style='opacity:.7;'>No awards</span>"
+
+        card = f"""
+    <div class="player-card">
+      <div class="pc-top">
+        <div class="pc-fig">#{shirt}</div>
+        <div>
+          <div class="pc-name">{name}</div>
+          <div class="pc-sub">{team} • {div} • — • Age {age}</div>
         </div>
-        """)
-    cards.append("</div>")
+      </div>
+      <div class="pc-body">
+        <div class="pc-row"><div class="pc-label">Goals</div><div class="pc-bar"><span style="--pct:{pct(goals)}"></span></div><div class="pc-num">{goals}</div></div>
+        <div class="pc-row"><div class="pc-label">Appearances</div><div class="pc-bar"><span style="--pct:{pct(apps)}"></span></div><div class="pc-num">{apps}</div></div>
+        <div class="pc-row"><div class="pc-label">Yellow Cards</div><div class="pc-bar"><span style="--pct:{pct(yc)}"></span></div><div class="pc-num">{yc}</div></div>
+        <div class="pc-row"><div class="pc-label">Red Cards</div><div class="pc-bar"><span style="--pct:{pct(rc)}"></span></div><div class="pc-num">{rc}</div></div>
+      </div>
+      <div class="pc-footer">{awards_html}</div>
+    </div>
+        """
+        cards.append(card)
+
+    st.markdown('<div class="player-grid">', unsafe_allow_html=True)
     st.markdown("\n".join(cards), unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ====================== MAIN APPLICATION ==========================
 def main():
@@ -870,11 +738,10 @@ def main():
 </div>
 """, unsafe_allow_html=True)
 
+    # Trophy background
     add_world_cup_watermark(
         image_url="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f3c6.svg",
-        opacity=0.10,
-        size="68vmin",
-        y_offset="6vh"
+        opacity=0.10, size="68vmin", y_offset="6vh"
     )
 
     GOOGLE_SHEETS_URL = (
@@ -896,6 +763,7 @@ def main():
         st.caption(f"🕒 Last refreshed: {last_refresh}")
         st.divider()
 
+        # Load data
         with st.spinner("📡 Loading tournament data…"):
             tournament_data = fetch_tournament_data(GOOGLE_SHEETS_URL)
 
@@ -907,11 +775,13 @@ def main():
 
         st.header("🔍 Data Filters")
 
+        # Division filter
         division_options = ["All Divisions"] + sorted(tournament_data["Division"].unique().tolist())
         selected_division = st.selectbox("📊 Division", division_options, key="division_filter")
         if selected_division != "All Divisions":
             tournament_data = tournament_data[tournament_data["Division"] == selected_division]
 
+        # Team filter
         available_teams = sorted(tournament_data["Team"].unique().tolist())
         selected_teams = st.multiselect(
             "🏆 Teams (optional)",
@@ -923,6 +793,7 @@ def main():
         if selected_teams:
             tournament_data = tournament_data[tournament_data["Team"].isin(selected_teams)]
 
+        # Player search (type-to-search list)
         st.subheader("👤 Player Search")
         player_names = sorted(tournament_data["Player"].dropna().astype(str).unique().tolist())
         selected_players = st.multiselect(
@@ -936,7 +807,7 @@ def main():
         if selected_players:
             tournament_data = tournament_data[tournament_data["Player"].isin(selected_players)]
 
-    # Tabs (first tabs row is sticky via CSS)
+    # Tabs (first block is sticky via CSS)
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         ["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📥 DOWNLOADS"]
     )
@@ -944,7 +815,7 @@ def main():
     current_stats = calculate_tournament_stats(tournament_data)
     top_performers = get_top_performers(tournament_data, 10)
 
-    # TAB 1
+    # TAB 1 — Overview
     with tab1:
         st.header("📊 Tournament Overview")
         display_metric_cards(current_stats)
@@ -971,7 +842,7 @@ def main():
                     ts["Display_Name"] = ts["Player"] + " (" + ts["Team"] + ")"
                     st.altair_chart(create_horizontal_bar_chart(ts, "Goals", "Display_Name", "Top 10 Players by Goals", "greens"), use_container_width=True)
 
-    # TAB 2
+    # TAB 2 — Quick Insights
     with tab2:
         st.header("⚡ Quick Tournament Insights")
         c1, c2, c3, c4 = st.columns(4)
@@ -999,7 +870,7 @@ def main():
                     },
                 )
 
-    # TAB 3
+    # TAB 3 — Teams
     with tab3:
         st.header("🏆 Teams Analysis")
         if tournament_data.empty:
@@ -1009,11 +880,13 @@ def main():
             create_enhanced_data_table(tournament_data, "teams")
             st.divider()
             st.subheader("📊 Team Performance Analysis")
-            team_analysis = tournament_data.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Goals=("Goals", "sum")).reset_index().sort_values("Goals", ascending=False)
+            team_analysis = (tournament_data.groupby(["Team", "Division"])
+                             .agg(Players=("Player", "nunique"), Goals=("Goals", "sum"))
+                             .reset_index().sort_values("Goals", ascending=False))
             if not team_analysis.empty:
                 st.altair_chart(create_horizontal_bar_chart(team_analysis.head(15), "Goals", "Team", "Team Goals Distribution", "viridis"), use_container_width=True)
 
-    # TAB 4 — Players (kept your reports; added Card View below)
+    # TAB 4 — Players (Ranking + Cards)
     with tab4:
         st.header("👤 Players Analysis")
         if tournament_data.empty:
@@ -1021,46 +894,12 @@ def main():
         else:
             st.subheader("📋 Players Ranking")
             create_enhanced_data_table(tournament_data, "players")
-            st.divider()
-            c1, c2 = st.columns(2)
-            with c1:
-                st.subheader("🥇 Top Scorers by Division")
-                for division in tournament_data["Division"].unique():
-                    div_data = tournament_data[tournament_data["Division"] == division]
-                    div_top = div_data.groupby(["Player", "Team"])["Goals"].sum().reset_index().sort_values("Goals", ascending=False).head(5)
-                    st.write(f"**{division}**")
-                    if not div_top.empty:
-                        for _, row in div_top.iterrows():
-                            st.write(f"• {row['Player']} ({row['Team']}) — {int(row['Goals'])} goals")
-                    else:
-                        st.write("• No players found")
-                    st.write("")
-            with c2:
-                st.subheader("📊 Player Statistics")
-                player_goals = tournament_data.groupby(["Player", "Team"])["Goals"].sum()
-                st.metric("🎯 Highest Individual Score", int(player_goals.max()) if not player_goals.empty else 0)
-                st.metric("👥 Players with 2+ Goals", int((player_goals >= 2).sum()))
-                st.metric("⚽ Single Goal Scorers", int((player_goals == 1).sum()))
 
-            # -------- NEW: Player Profile Cards --------
-            st.divider()
-            st.subheader("📇 Player Profiles (Card View)")
-            profiles_df = build_player_profiles(tournament_data)
+            st.subheader("🧩 Player Profiles (Card View)")
+            st.caption("Tip: use the filters in the left sidebar (division, team, players) to narrow the list.")
+            render_player_cards(tournament_data)
 
-            colf1, colf2 = st.columns([2,1])
-            with colf1:
-                q = st.text_input("🔎 Search player name (contains)", "")
-            with colf2:
-                min_goals = st.number_input("Minimum goals", min_value=0, value=0, step=1)
-            if q:
-                profiles_df = profiles_df[profiles_df["Player"].str.contains(q, case=False, na=False)]
-            if min_goals > 0:
-                profiles_df = profiles_df[profiles_df["Goals"] >= min_goals]
-
-            st.caption(f"Rendering **{len(profiles_df)}** player cards")
-            render_player_cards(profiles_df)
-
-    # TAB 5
+    # TAB 5 — Analytics
     with tab5:
         st.header("📈 Advanced Analytics")
         if tournament_data.empty:
@@ -1073,8 +912,21 @@ def main():
                 (st.plotly_chart if PLOTLY_AVAILABLE else st.altair_chart)(dist, use_container_width=True)
             with c2:
                 st.subheader("🎯 Team Performance Matrix")
-                scatter = create_advanced_scatter_plot(tournament_data)
-                (st.plotly_chart if PLOTLY_AVAILABLE else st.altair_chart)(scatter, use_container_width=True)
+                # If you’d prefer removing the scatter entirely, comment the next two lines.
+                if PLOTLY_AVAILABLE:
+                    # A small bubble chart; remove if not needed
+                    team_stats = tournament_data.groupby(["Team", "Division"]).agg(Players=("Player","nunique"), Goals=("Goals","sum")).reset_index()
+                    fig = px.scatter(team_stats, x="Players", y="Goals", color="Division", size="Goals",
+                                     hover_name="Team", hover_data={"Players": True, "Goals": True},
+                                     title="Team Performance: Players vs Total Goals")
+                    fig.update_traces(marker=dict(sizemode="diameter", sizemin=8, sizemax=30, line=dict(width=2, color="white"), opacity=.85))
+                    fig.update_layout(plot_bgcolor="white", paper_bgcolor="white", font=dict(family="Poppins", size=12),
+                                      title=dict(font=dict(size=16, color="#1e293b")), xaxis=dict(title="Players", gridcolor="#f1f5f9", zeroline=False),
+                                      yaxis=dict(title="Total Goals", gridcolor="#f1f5f9", zeroline=False), height=400, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5))
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("Plotly unavailable in this environment.")
+
             st.divider()
             st.subheader("🔍 Detailed Performance Metrics")
             c1, c2, c3 = st.columns(3)
@@ -1099,7 +951,7 @@ def main():
                     st.write(f"  - {total_goals} total goals")
                     st.write(f"  - {unique_players} unique players")
 
-    # TAB 6
+    # TAB 6 — Downloads
     with tab6:
         create_download_section(full_tournament_data, tournament_data)
 
