@@ -9,6 +9,8 @@
 # - Fixed Altair TitleParams (fontWeight)
 # - Title shows football emoji correctly
 # - Robust World Cup trophy watermark background
+# - NEW: 📇 PLAYER PROFILES tab (name, team, division, shirt no, age, position, apps, goals, YC/RC, awards)
+# - No Pass_Completion field anywhere
 
 from __future__ import annotations
 
@@ -42,6 +44,14 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Data sources
+GOOGLE_SHEETS_URL = (
+    "https://docs.google.com/spreadsheets/d/e/"
+    "2PACX-1vRpCD-Wh_NnGQjJ1Mh3tuU5Mdcl8TK41JopMUcSnfqww8wkPXKKgRyg7v4sC_vuUw/pub?output=xlsx"
+)
+# Optional: separate player master registry (CSV/XLSX). Leave empty "" if not used.
+PLAYER_MASTER_URL = ""  # e.g. "https://docs.google.com/.../pub?output=csv"
+
 # ====================== STYLING ===================================
 def inject_advanced_css():
     st.markdown(
@@ -49,104 +59,60 @@ def inject_advanced_css():
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
-        :root{
-          /* Adjust this if the sticky tabs should sit a bit lower/higher */
-          --sticky-tabs-top: 52px;
-        }
-
+        :root{ --sticky-tabs-top: 52px; }
         .stApp {
             font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
         .block-container {
-            padding-top: 0.5rem;
-            padding-bottom: 2rem;
-            max-width: 98vw;
-            width: 98vw;
+            padding-top: 0.5rem; padding-bottom: 2rem;
+            max-width: 98vw; width: 98vw;
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(15px);
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.15);
             margin: 1rem auto;
-            position: relative; /* for z layering */
-            z-index: 1;
+            position: relative; z-index: 1;
         }
-
-        /* Keep header/toolbar visible so sidebar toggle shows */
         #MainMenu, footer, .stDeployButton,
         div[data-testid="stDecoration"],
-        div[data-testid="stStatusWidget"] {
-            display: none !important;
-        }
+        div[data-testid="stStatusWidget"] { display: none !important; }
 
-        /* ----- STICKY TABS (freeze the pane just below the tabs) ----- */
+        /* Sticky first tabs block */
         .block-container [data-testid="stTabs"]:first-of-type{
-            position: sticky;
-            top: var(--sticky-tabs-top);
-            z-index: 6;                           /* above content, below dialogs */
-            background: rgba(255,255,255,0.96);   /* frosted background */
+            position: sticky; top: var(--sticky-tabs-top);
+            z-index: 6; background: rgba(255,255,255,0.96);
             backdrop-filter: blur(8px);
             border-bottom: 1px solid #e2e8f0;
-            padding-top: .25rem;
-            padding-bottom: .25rem;
-            margin-top: .25rem;
+            padding-top: .25rem; padding-bottom: .25rem; margin-top: .25rem;
         }
 
-        /* App title */
-        .app-title{
-            display:flex; align-items:center; justify-content:center; gap:12px;
-            margin: .75rem 0 1.0rem;
-        }
-        .app-title .ball{
-            font-size: 32px; line-height:1;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,.15));
-        }
+        .app-title{ display:flex; align-items:center; justify-content:center; gap:12px; margin:.75rem 0 1.0rem; }
+        .app-title .ball{ font-size:32px; line-height:1; filter: drop-shadow(0 2px 4px rgba(0,0,0,.15)); }
         .app-title .title{
-            font-weight:700; letter-spacing:.05em;
-            font-size: clamp(22px, 3.5vw, 36px);
+            font-weight:700; letter-spacing:.05em; font-size: clamp(22px, 3.5vw, 36px);
             background: linear-gradient(45deg, #0ea5e9, #1e40af, #7c3aed);
-            -webkit-background-clip: text; background-clip: text;
-            -webkit-text-fill-color: transparent;
+            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
             text-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
-        /* Buttons */
         .stButton > button, .stDownloadButton > button {
             background: linear-gradient(135deg, #0ea5e9, #3b82f6) !important;
-            color: white !important;
-            border: 0 !important;
-            border-radius: 12px !important;
-            padding: 0.6rem 1.2rem !important;
-            font-weight: 600 !important;
-            font-size: 0.9rem !important;
-            transition: all 0.3s ease !important;
-            box-shadow: 0 4px 15px rgba(14, 165, 233, 0.3) !important;
+            color: white !important; border: 0 !important; border-radius: 12px !important;
+            padding: 0.6rem 1.2rem !important; font-weight: 600 !important; font-size: 0.9rem !important;
+            transition: all 0.3s ease !important; box-shadow: 0 4px 15px rgba(14, 165, 233, 0.3) !important;
         }
         .stButton > button:hover, .stDownloadButton > button:hover {
             transform: translateY(-2px) !important;
-            box-shadow: 0 8px 25px rgba(14, 165, 233, 0.4) !important;
-            filter: brightness(1.05) !important;
+            box-shadow: 0 8px 25px rgba(14, 165, 233, 0.4) !important; filter: brightness(1.05) !important;
         }
-
-        /* Dataframes */
-        .stDataFrame {
-            border-radius: 15px !important;
-            overflow: hidden !important;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.08) !important;
-        }
-
-        /* Metric cards */
+        .stDataFrame { border-radius: 15px !important; overflow: hidden !important; box-shadow: 0 8px 32px rgba(0,0,0,0.08) !important; }
         .metric-container {
             background: linear-gradient(135deg, rgba(14,165,233,.1), rgba(59,130,246,.05));
-            border-radius: 15px;
-            padding: 1.5rem;
-            border-left: 4px solid #0ea5e9;
-            box-shadow: 0 4px 20px rgba(14,165,233,.1);
-            transition: transform .2s ease;
+            border-radius: 15px; padding: 1.5rem; border-left: 4px solid #0ea5e9;
+            box-shadow: 0 4px 20px rgba(14,165,233,.1); transition: transform .2s ease;
         }
         .metric-container:hover { transform: translateY(-3px); }
-
-        /* Sidebar status pill */
         .status-pill { padding:.5rem .75rem; border-radius:.6rem; font-size:.85rem; margin-top:.5rem; }
         .status-ok  { background:#ecfeff; border-left:4px solid #06b6d4; color:#155e75; }
         .status-warn{ background:#fef9c3; border-left:4px solid #f59e0b; color:#713f12; }
@@ -197,13 +163,12 @@ def notify(msg: str, kind: str = "ok"):
     cls = {"ok": "status-ok", "warn": "status-warn", "err": "status-err"}.get(kind, "status-ok")
     st.markdown(f'<div class="status-pill {cls}">{msg}</div>', unsafe_allow_html=True)
 
-# ---------- Robust Trophy watermark (DOM element, not :before) ----------
+# ---------- Watermark ----------
 def add_world_cup_watermark(*, image_path: str | None = None,
                             image_url: str | None = None,
                             opacity: float = 0.08,
                             size: str = "68vmin",
                             y_offset: str = "6vh"):
-    """Shows a big, faint trophy behind the whole app."""
     if image_path:
         ext = "svg+xml" if image_path.lower().endswith(".svg") else "png"
         b64 = base64.b64encode(Path(image_path).read_bytes()).decode()
@@ -217,15 +182,13 @@ def add_world_cup_watermark(*, image_path: str | None = None,
         f"""
     <style>
       #wc-trophy {{
-        position: fixed;
-        inset: 0;
+        position: fixed; inset: 0;
         background-image: {bg};
         background-repeat: no-repeat;
         background-position: center {y_offset};
         background-size: {size};
         opacity: {opacity};
-        pointer-events: none;
-        z-index: 0; /* below content; .block-container has z-index:1 */
+        pointer-events: none; z-index: 0;
       }}
     </style>
     <div id="wc-trophy"></div>
@@ -348,17 +311,83 @@ def fetch_tournament_data(url: str) -> pd.DataFrame:
     except Exception:
         return pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
 
+# ========== OPTIONAL PLAYER MASTER LOADER & PROFILES ==========
+def _read_any_table_from_url(url: str) -> pd.DataFrame:
+    if not url:
+        return pd.DataFrame()
+    try:
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        b = r.content
+        try:
+            return pd.read_csv(BytesIO(b))
+        except Exception:
+            try:
+                return pd.read_excel(BytesIO(b))
+            except Exception:
+                return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+def load_player_master(url: str) -> pd.DataFrame:
+    """
+    Expected columns (all optional except Player):
+      Player, Team, Division, Shirt_No, Age, Position, Appearances,
+      Yellow_Cards, Red_Cards, Awards
+    """
+    df = _read_any_table_from_url(url)
+    if df.empty:
+        return df
+    df.columns = [str(c).strip() for c in df.columns]
+    rename_map = {
+        "Shirt No": "Shirt_No",
+        "Yellow": "Yellow_Cards",
+        "Red": "Red_Cards",
+        "Appearence": "Appearances",
+    }
+    df = df.rename(columns=rename_map)
+    return df
+
+def build_player_profiles(base_df: pd.DataFrame, master_df: pd.DataFrame) -> pd.DataFrame:
+    core = (
+        base_df.groupby(["Player", "Team", "Division"])["Goals"]
+        .sum()
+        .reset_index()
+        .rename(columns={"Goals": "Total_Goals"})
+    )
+
+    if not master_df.empty:
+        key_cols = [c for c in ["Player", "Team", "Division"] if c in master_df.columns]
+        if "Player" not in key_cols:
+            key_cols = ["Player"]
+        core = core.merge(master_df, on=key_cols, how="left")
+
+    for col, default in [
+        ("Shirt_No", ""), ("Age", ""), ("Position", ""),
+        ("Appearances", 0), ("Yellow_Cards", 0), ("Red_Cards", 0),
+        ("Awards", "")
+    ]:
+        if col not in core.columns:
+            core[col] = default
+
+    for ncol in ["Appearances", "Yellow_Cards", "Red_Cards", "Total_Goals"]:
+        core[ncol] = pd.to_numeric(core[ncol], errors="coerce").fillna(0).astype(int)
+
+    cols = [
+        "Player", "Team", "Division", "Shirt_No", "Age", "Position",
+        "Appearances", "Total_Goals", "Yellow_Cards", "Red_Cards", "Awards"
+    ]
+    core = core[[c for c in cols if c in core.columns]].sort_values(
+        ["Total_Goals", "Appearances", "Player"], ascending=[False, False, True]
+    )
+    return core
+
 # ====================== ANALYTICS FUNCTIONS =======================
 def calculate_tournament_stats(df: pd.DataFrame) -> dict:
     if df.empty:
         return {
-            "total_goals": 0,
-            "total_players": 0,
-            "total_teams": 0,
-            "divisions": 0,
-            "avg_goals_per_team": 0,
-            "top_scorer_goals": 0,
-            "competitive_balance": 0,
+            "total_goals": 0, "total_players": 0, "total_teams": 0, "divisions": 0,
+            "avg_goals_per_team": 0, "top_scorer_goals": 0, "competitive_balance": 0,
         }
 
     player_totals = df.groupby(["Player", "Team", "Division"])["Goals"].sum().reset_index()
@@ -379,15 +408,13 @@ def get_top_performers(df: pd.DataFrame, top_n: int = 10) -> dict:
         return {"players": pd.DataFrame(), "teams": pd.DataFrame()}
     top_players = (
         df.groupby(["Player", "Team", "Division"])["Goals"]
-        .sum()
-        .reset_index()
+        .sum().reset_index()
         .sort_values(["Goals", "Player"], ascending=[False, True])
         .head(top_n)
     )
     top_teams = (
         df.groupby(["Team", "Division"])["Goals"]
-        .sum()
-        .reset_index()
+        .sum().reset_index()
         .sort_values("Goals", ascending=False)
         .head(top_n)
     )
@@ -400,8 +427,7 @@ def create_division_comparison(df: pd.DataFrame) -> pd.DataFrame:
         df.groupby("Division")
         .agg(Goals_sum=("Goals", "sum"), Goals_mean=("Goals", "mean"), Records=("Goals", "count"),
              Teams=("Team", "nunique"), Players=("Player", "nunique"))
-        .round(2)
-        .reset_index()
+        .round(2).reset_index()
         .rename(columns={"Goals_sum": "Total_Goals", "Goals_mean": "Avg_Goals", "Records": "Total_Records"})
     )
     total_goals = division_stats["Total_Goals"].sum()
@@ -430,20 +456,13 @@ def create_horizontal_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title:
 def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
     if df.empty:
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
-
     division_data = df.groupby("Division")["Goals"].sum().reset_index()
     sel = alt.selection_single(fields=["Division"], empty="none")
-
     base = (
         alt.Chart(division_data)
         .add_selection(sel)
-        .properties(
-            width=300,
-            height=300,
-            title=alt.TitleParams(text="Goals Distribution by Division", fontSize=16, fontWeight=600),
-        )
+        .properties(width=300, height=300, title=alt.TitleParams(text="Goals Distribution by Division", fontSize=16, fontWeight=600))
     )
-
     outer = (
         base.mark_arc(innerRadius=60, outerRadius=120, stroke="white", strokeWidth=2)
         .encode(
@@ -453,12 +472,9 @@ def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
             tooltip=["Division:N", alt.Tooltip("Goals:Q", format="d")],
         )
     )
-
-    center_text = (
-        base.mark_text(align="center", baseline="middle", fontSize=18, fontWeight="bold", color="#1e293b")
-        .encode(text=alt.value(f"Total\n{int(division_data['Goals'].sum())}"))
+    center_text = base.mark_text(align="center", baseline="middle", fontSize=18, fontWeight="bold", color="#1e293b").encode(
+        text=alt.value(f"Total\n{int(division_data['Goals'].sum())}")
     )
-
     return outer + center_text
 
 def create_advanced_scatter_plot(df: pd.DataFrame):
@@ -466,9 +482,7 @@ def create_advanced_scatter_plot(df: pd.DataFrame):
         if PLOTLY_AVAILABLE:
             fig = go.Figure(); fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False); return fig
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
-
     team_stats = df.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Goals=("Goals", "sum")).reset_index()
-
     if PLOTLY_AVAILABLE:
         fig = px.scatter(
             team_stats, x="Players", y="Goals", color="Division", size="Goals",
@@ -477,8 +491,7 @@ def create_advanced_scatter_plot(df: pd.DataFrame):
         )
         fig.update_traces(marker=dict(sizemode="diameter", sizemin=8, sizemax=30, line=dict(width=2, color="white"), opacity=0.85))
         fig.update_layout(
-            plot_bgcolor="white",
-            paper_bgcolor="white",
+            plot_bgcolor="white", paper_bgcolor="white",
             font=dict(family="Poppins", size=12),
             title=dict(font=dict(size=16, color="#1e293b")),
             xaxis=dict(title="Number of Players in Team", gridcolor="#f1f5f9", zeroline=False),
@@ -487,7 +500,6 @@ def create_advanced_scatter_plot(df: pd.DataFrame):
             height=400,
         )
         return fig
-
     return (
         alt.Chart(team_stats)
         .mark_circle(size=100, opacity=0.85)
@@ -497,8 +509,7 @@ def create_advanced_scatter_plot(df: pd.DataFrame):
             color=alt.Color("Division:N", scale=alt.Scale(range=["#0ea5e9", "#f59e0b"]), title="Division"),
             size=alt.Size("Goals:Q", legend=None),
             tooltip=["Team:N", "Division:N", "Players:Q", "Goals:Q"],
-        )
-        .properties(title="Team Performance: Players vs Total Goals", height=400)
+        ).properties(title="Team Performance: Players vs Total Goals", height=400)
     )
 
 def create_goals_distribution_histogram(df: pd.DataFrame):
@@ -506,36 +517,27 @@ def create_goals_distribution_histogram(df: pd.DataFrame):
         if PLOTLY_AVAILABLE:
             fig = go.Figure(); fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False); return fig
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
-
     player_goals = df.groupby(["Player", "Team"])["Goals"].sum().values
     if PLOTLY_AVAILABLE:
         fig = go.Figure(
             data=[go.Histogram(x=player_goals, nbinsx=max(1, len(set(player_goals))), marker_line_color="white", marker_line_width=1.5, opacity=0.85, hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>")]
         )
         fig.update_layout(
-            title="Distribution of Goals per Player",
-            xaxis_title="Goals per Player",
-            yaxis_title="Number of Players",
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            font=dict(family="Poppins", size=12),
+            title="Distribution of Goals per Player", xaxis_title="Goals per Player", yaxis_title="Number of Players",
+            plot_bgcolor="white", paper_bgcolor="white", font=dict(family="Poppins", size=12),
             title_font=dict(size=16, color="#1e293b"),
-            xaxis=dict(gridcolor="#f1f5f9", zeroline=False),
-            yaxis=dict(gridcolor="#f1f5f9", zeroline=False),
+            xaxis=dict(gridcolor="#f1f5f9", zeroline=False), yaxis=dict(gridcolor="#f1f5f9", zeroline=False),
             height=400,
         )
         return fig
-
     hist_df = pd.DataFrame({"Goals": player_goals})
     return (
-        alt.Chart(hist_df)
-        .mark_bar(opacity=0.85)
+        alt.Chart(hist_df).mark_bar(opacity=0.85)
         .encode(
             x=alt.X("Goals:Q", bin=alt.Bin(maxbins=10), title="Goals per Player"),
             y=alt.Y("count():Q", title="Number of Players"),
             tooltip=[alt.Tooltip("Goals:Q", bin=True, title="Goals"), alt.Tooltip("count():Q", title="Players")],
-        )
-        .properties(title="Distribution of Goals per Player", height=400)
+        ).properties(title="Distribution of Goals per Player", height=400)
     )
 
 # ====================== UI COMPONENTS =============================
@@ -549,17 +551,14 @@ def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
     if df.empty:
         st.info("📊 No data available for insights.")
         return
-
     stats = calculate_tournament_stats(df)
     top_perf = get_top_performers(df, 5)
     division_cmp = create_division_comparison(df)
-
     if not top_perf["teams"].empty:
         tt = top_perf["teams"].iloc[0]
         top_team_name, top_team_goals = tt["Team"], int(tt["Goals"])
     else:
         top_team_name, top_team_goals = "—", 0
-
     if not top_perf["players"].empty:
         tp = top_perf["players"].iloc[0]
         top_player_name, top_player_team, top_player_goals = tp["Player"], tp["Team"], int(tp["Goals"])
@@ -577,14 +576,12 @@ def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
         """,
             unsafe_allow_html=True,
         )
-
         if not division_cmp.empty and len(division_cmp) > 1:
             def get_vals(div):
                 s = division_cmp[division_cmp["Division"] == div]
                 return (int(s["Total_Goals"].iloc[0]), s["Goal_Share_Pct"].iloc[0]) if not s.empty else (0, 0)
             b_goals, b_pct = get_vals("B Division")
             a_goals, a_pct = get_vals("A Division")
-
             st.markdown(
                 f"""
             <div style="background:white;padding:1.5rem;border-radius:15px;box-shadow:0 4px 20px rgba(0,0,0,.05);border-left:4px solid #f59e0b;margin-bottom:1rem;">
@@ -598,7 +595,6 @@ def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
             """,
                 unsafe_allow_html=True,
             )
-
     with col2:
         st.markdown(
             f"""
@@ -609,11 +605,9 @@ def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
         """,
             unsafe_allow_html=True,
         )
-
         player_goals = df.groupby(["Player", "Team"])["Goals"].sum()
         goals_1 = int((player_goals == 1).sum())
         goals_2_plus = int((player_goals >= 2).sum())
-
         st.markdown(
             f"""
         <div style="background:white;padding:1.5rem;border-radius:15px;box-shadow:0 4px 20px rgba(0,0,0,.05);border-left:4px solid #a78bfa;margin-bottom:1rem;">
@@ -634,13 +628,10 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "records"):
     if df.empty:
         st.info(f"📋 No {table_type} data available with current filters.")
         return
-
     if table_type == "records":
         display_df = df.sort_values("Goals", ascending=False).reset_index(drop=True)
         st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True,
+            display_df, use_container_width=True, hide_index=True,
             column_config={
                 "Division": st.column_config.TextColumn("Division", width="small"),
                 "Team": st.column_config.TextColumn("Team", width="medium"),
@@ -648,7 +639,6 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "records"):
                 "Goals": st.column_config.NumberColumn("Goals", format="%d", width="small"),
             },
         )
-
     elif table_type == "teams":
         teams_summary = df.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Total_Goals=("Goals", "sum")).reset_index()
         top_rows = []
@@ -660,11 +650,8 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "records"):
             top_rows.append({"Team": team, "Top_Scorer": s.idxmax(), "Top_Scorer_Goals": int(s.max())})
         top_df = pd.DataFrame(top_rows)
         teams_display = teams_summary.merge(top_df, on="Team", how="left").sort_values("Total_Goals", ascending=False)
-
         st.dataframe(
-            teams_display,
-            use_container_width=True,
-            hide_index=True,
+            teams_display, use_container_width=True, hide_index=True,
             column_config={
                 "Division": st.column_config.TextColumn("Division", width="small"),
                 "Team": st.column_config.TextColumn("Team", width="medium"),
@@ -674,15 +661,12 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "records"):
                 "Top_Scorer_Goals": st.column_config.NumberColumn("Goals", format="%d", width="small"),
             },
         )
-
     elif table_type == "players":
         players_summary = df.groupby(["Player", "Team", "Division"])["Goals"].sum().reset_index()
         players_summary = players_summary.sort_values(["Goals", "Player"], ascending=[False, True])
         players_summary.insert(0, "Rank", range(1, len(players_summary) + 1))
         st.dataframe(
-            players_summary,
-            use_container_width=True,
-            hide_index=True,
+            players_summary, use_container_width=True, hide_index=True,
             column_config={
                 "Rank": st.column_config.NumberColumn("Rank", format="%d", width="small"),
                 "Player": st.column_config.TextColumn("Player", width="large"),
@@ -703,8 +687,7 @@ def create_comprehensive_zip_report(full_df: pd.DataFrame, filtered_df: pd.DataF
                 filtered_df.groupby(["Team", "Division"])
                 .agg(Unique_Players=("Player", "nunique"), Total_Records=("Goals", "count"), Total_Goals=("Goals", "sum"),
                      Avg_Goals=("Goals", "mean"), Max_Goals=("Goals", "max"))
-                .round(2)
-                .reset_index()
+                .round(2).reset_index()
             )
             z.writestr("03_teams_detailed_analysis.csv", teams.to_csv(index=False))
             players = filtered_df.groupby(["Player", "Team", "Division"])["Goals"].sum().reset_index()
@@ -724,7 +707,6 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
     st.subheader("📥 Download Reports")
     st.caption("**Full** = all data ignoring filters, **Filtered** = current view with active filters")
     col1, col2, col3 = st.columns(3)
-
     with col1:
         st.subheader("📊 Data Exports")
         if not full_df.empty:
@@ -743,7 +725,6 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 mime="text/csv",
                 help="Download data with current filters applied",
             )
-
     with col2:
         st.subheader("🏆 Summary Reports")
         if not filtered_df.empty:
@@ -757,7 +738,6 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 mime="text/csv",
                 help="Download team performance summary",
             )
-
             players_summary = filtered_df.groupby(["Player", "Team", "Division"])["Goals"].sum().reset_index()
             players_summary = players_summary.sort_values(["Goals", "Player"], ascending=[False, True])
             players_summary.insert(0, "Rank", range(1, len(players_summary) + 1))
@@ -768,7 +748,6 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 mime="text/csv",
                 help="Download top scorers summary",
             )
-
     with col3:
         st.subheader("📦 Complete Package")
         if st.button("📦 Generate Complete Report Package", help="Generate ZIP with all reports and analytics"):
@@ -786,87 +765,57 @@ def main():
     inject_advanced_css()
 
     # Title
-    st.markdown("""
-<div class="app-title">
-  <span class="ball">⚽</span>
-  <span class="title">ABEER BLUESTAR SOCCER FEST 2K25</span>
-</div>
-""", unsafe_allow_html=True)
+    st.markdown("""<div class="app-title"><span class="ball">⚽</span><span class="title">ABEER BLUESTAR SOCCER FEST 2K25</span></div>""", unsafe_allow_html=True)
 
-    # Trophy background (URL or local file)
+    # Watermark
     add_world_cup_watermark(
         image_url="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f3c6.svg",
-        opacity=0.10,
-        size="68vmin",
-        y_offset="6vh"
-    )
-
-    GOOGLE_SHEETS_URL = (
-        "https://docs.google.com/spreadsheets/d/e/"
-        "2PACX-1vRpCD-Wh_NnGQjJ1Mh3tuU5Mdcl8TK41JopMUcSnfqww8wkPXKKgRyg7v4sC_vuUw/pub?output=xlsx"
+        opacity=0.10, size="68vmin", y_offset="6vh"
     )
 
     # Sidebar
     with st.sidebar:
         st.header("🎛️ Dashboard Controls")
-
         if st.button("🔄 Refresh Tournament Data", use_container_width=True):
             st.cache_data.clear()
             st.session_state["last_refresh"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             notify("Data cache cleared. Reloading…", "ok")
             st.rerun()
-
         last_refresh = st.session_state.get("last_refresh", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         st.caption(f"🕒 Last refreshed: {last_refresh}")
         st.divider()
-
-        # Load data
         with st.spinner("📡 Loading tournament data…"):
             tournament_data = fetch_tournament_data(GOOGLE_SHEETS_URL)
-
         if tournament_data.empty:
             notify("No tournament data available. Check the published sheet link/permissions.", "err")
             st.stop()
-
         full_tournament_data = tournament_data.copy()
 
         st.header("🔍 Data Filters")
-
-        # Division filter
         division_options = ["All Divisions"] + sorted(tournament_data["Division"].unique().tolist())
         selected_division = st.selectbox("📊 Division", division_options, key="division_filter")
         if selected_division != "All Divisions":
             tournament_data = tournament_data[tournament_data["Division"] == selected_division]
-
-        # Team filter
         available_teams = sorted(tournament_data["Team"].unique().tolist())
         selected_teams = st.multiselect(
-            "🏆 Teams (optional)",
-            available_teams,
-            key="teams_filter",
-            help="Select specific teams to focus on",
-            placeholder="Type to search teams…",
+            "🏆 Teams (optional)", available_teams, key="teams_filter",
+            help="Select specific teams to focus on", placeholder="Type to search teams…",
         )
         if selected_teams:
             tournament_data = tournament_data[tournament_data["Team"].isin(selected_teams)]
-
-        # Player search (type-to-search list)
         st.subheader("👤 Player Search")
         player_names = sorted(tournament_data["Player"].dropna().astype(str).unique().tolist())
         selected_players = st.multiselect(
-            "Type to search and select players",
-            options=player_names,
-            default=[],
-            key="players_filter",
-            placeholder="Start typing a player name…",
+            "Type to search and select players", options=player_names, default=[],
+            key="players_filter", placeholder="Start typing a player name…",
             help="Type to search. You can select one or multiple players.",
         )
         if selected_players:
             tournament_data = tournament_data[tournament_data["Player"].isin(selected_players)]
 
-    # Tabs (this first tabs block is sticky via CSS above)
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
-        ["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📥 DOWNLOADS"]
+    # Tabs (first block is sticky via CSS)
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
+        ["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📥 DOWNLOADS", "📇 PLAYER PROFILES"]
     )
 
     current_stats = calculate_tournament_stats(tournament_data)
@@ -914,9 +863,7 @@ def main():
             division_comparison = create_division_comparison(tournament_data)
             if not division_comparison.empty:
                 st.dataframe(
-                    division_comparison,
-                    use_container_width=True,
-                    hide_index=True,
+                    division_comparison, use_container_width=True, hide_index=True,
                     column_config={
                         "Total_Goals": st.column_config.NumberColumn("Total Goals", format="%d"),
                         "Avg_Goals": st.column_config.NumberColumn("Avg Goals", format="%.2f"),
@@ -1012,6 +959,63 @@ def main():
     # TAB 6
     with tab6:
         create_download_section(full_tournament_data, tournament_data)
+
+    # TAB 7 — PLAYER PROFILES
+    with tab7:
+        st.header("📇 Complete Player Profiles")
+        player_master = load_player_master(PLAYER_MASTER_URL)
+        profiles = build_player_profiles(tournament_data, player_master)
+
+        if profiles.empty:
+            st.info("No player records available with the current filters.")
+        else:
+            st.dataframe(
+                profiles,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Player": st.column_config.TextColumn("Player", width="large"),
+                    "Team": st.column_config.TextColumn("Team", width="medium"),
+                    "Division": st.column_config.TextColumn("Division", width="small"),
+                    "Shirt_No": st.column_config.TextColumn("Shirt #", width="small"),
+                    "Age": st.column_config.TextColumn("Age", width="small"),
+                    "Position": st.column_config.TextColumn("Position", width="small"),
+                    "Appearances": st.column_config.NumberColumn("Apps", format="%d", width="small"),
+                    "Total_Goals": st.column_config.NumberColumn("Goals", format="%d", width="small"),
+                    "Yellow_Cards": st.column_config.NumberColumn("YC", format="%d", width="small"),
+                    "Red_Cards": st.column_config.NumberColumn("RC", format="%d", width="small"),
+                    "Awards": st.column_config.TextColumn("Awards", width="large"),
+                },
+            )
+
+            c1, c2 = st.columns(2)
+            with c1:
+                st.download_button(
+                    "⬇️ Download Player Profiles (CSV)",
+                    data=profiles.to_csv(index=False),
+                    file_name=f"player_profiles_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+            with c2:
+                if len(profiles) >= 1:
+                    top_scorer = profiles.iloc[0]
+                    most_apps_row = profiles.sort_values('Appearances', ascending=False).iloc[0]
+                    st.markdown(
+                        f"""
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                          <div class="metric-container">
+                            <div style="font-size:1.1rem;font-weight:700;">Top Scorer</div>
+                            <div style="color:#1f2937"><b>{top_scorer['Player']}</b> ({top_scorer['Team']}) — {top_scorer['Total_Goals']} goals</div>
+                          </div>
+                          <div class="metric-container">
+                            <div style="font-size:1.1rem;font-weight:700;">Most Appearances</div>
+                            <div style="color:#1f2937"><b>{most_apps_row['Player']}</b> — {int(most_apps_row['Appearances'])} apps</div>
+                          </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
 # ====================== ENTRY POINT ===============================
 if __name__ == "__main__":
