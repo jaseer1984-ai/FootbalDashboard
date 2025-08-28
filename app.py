@@ -1,10 +1,5 @@
 # ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard
 # Author: AI Assistant | Updated: 2025-08-28
-# Changes in this version:
-# - Removed the "Quick Filters → Minimum goals per player" slider (hidden completely)
-# - Player Search now uses a type-to-search multiselect of player names
-# - Previous requests kept: no "AVG GOALS/PLAYER" card/lines, Active Filters Summary + footer removed,
-#   header visible (so sidebar toggle works)
 
 from __future__ import annotations
 
@@ -34,7 +29,7 @@ st.set_page_config(
     page_title="ABEER BLUESTAR SOCCER FEST 2K25",
     page_icon="⚽",
     layout="wide",
-    initial_sidebar_state="expanded",  # Sidebar opens by default; toggle lives in header
+    initial_sidebar_state="expanded",  # keep sidebar toggle visible in header
 )
 
 # ====================== STYLING ===================================
@@ -60,8 +55,7 @@ def inject_advanced_css():
             margin: 1rem auto;
         }
 
-        /* Keep header visible so the sidebar toggle appears.
-           Hide some chrome but NOT the header/toolbar. */
+        /* Keep header/toolbar visible so sidebar toggle shows */
         #MainMenu, footer, .stDeployButton,
         div[data-testid="stDecoration"],
         div[data-testid="stStatusWidget"] {
@@ -378,11 +372,28 @@ def create_horizontal_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title:
     )
 
 def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
+    """Donut chart for goals by division (Altair TitleParams fontWeight fixed)."""
     if df.empty:
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
+
     division_data = df.groupby("Division")["Goals"].sum().reset_index()
+
     sel = alt.selection_single(fields=["Division"], empty="none")
-    base = alt.Chart(division_data).add_selection(sel).properties(width=300, height=300, title=alt.TitleParams(text="Goals Distribution by Division", fontSize=16, FontWeight=600))
+
+    base = (
+        alt.Chart(division_data)
+        .add_selection(sel)
+        .properties(
+            width=300,
+            height=300,
+            title=alt.TitleParams(
+                text="Goals Distribution by Division",
+                fontSize=16,
+                fontWeight=600  # correct key
+            ),
+        )
+    )
+
     outer = (
         base.mark_arc(innerRadius=60, outerRadius=120, stroke="white", strokeWidth=2)
         .encode(
@@ -392,7 +403,12 @@ def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
             tooltip=["Division:N", alt.Tooltip("Goals:Q", format="d")],
         )
     )
-    center_text = base.mark_text(align="center", baseline="middle", fontSize=18, fontWeight="bold", color="#1e293b").encode(text=alt.value(f"Total\n{int(division_data['Goals'].sum())}"))
+
+    center_text = (
+        base.mark_text(align="center", baseline="middle", fontSize=18, fontWeight="bold", color="#1e293b")
+        .encode(text=alt.value(f"Total\n{int(division_data['Goals'].sum())}"))
+    )
+
     return outer + center_text
 
 def create_advanced_scatter_plot(df: pd.DataFrame):
@@ -804,9 +820,8 @@ def main():
         if selected_players:
             tournament_data = tournament_data[tournament_data["Player"].isin(selected_players)]
 
-        # NOTE: Quick Filters (min goals per player) — removed per request
-
-        # (Active Filters Summary block previously here — removed per request)
+        # Quick Filters (min goals per player) — removed per request
+        # Active Filters Summary — removed per request
 
     # Tabs
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📥 DOWNLOADS"])
@@ -956,8 +971,6 @@ def main():
     # TAB 6
     with tab6:
         create_download_section(full_tournament_data, tournament_data)
-
-    # Footer blurb removed per request
 
 # ====================== ENTRY POINT ===============================
 if __name__ == "__main__":
