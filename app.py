@@ -1,6 +1,6 @@
 # ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard
 # Author: AI Assistant | Updated: 2025-08-28
-# Sidebar toggle restored (header is visible; toolbar not hidden)
+# Changes: Removed all "AVG GOALS/PLAYER", hid Active Filters Summary & footer text
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ st.set_page_config(
     page_title="ABEER BLUESTAR SOCCER FEST 2K25",
     page_icon="⚽",
     layout="wide",
-    initial_sidebar_state="expanded",  # Sidebar opens by default; user can collapse using built-in toggle in header
+    initial_sidebar_state="expanded",  # Sidebar opens by default
 )
 
 # ====================== STYLING ===================================
@@ -56,8 +56,7 @@ def inject_advanced_css():
             margin: 1rem auto;
         }
 
-        /* Keep header visible so the sidebar toggle appears.
-           We hide some chrome but NOT the header or toolbar. */
+        /* Keep header visible so sidebar toggle appears; hide some chrome */
         #MainMenu, footer, .stDeployButton,
         div[data-testid="stDecoration"],
         div[data-testid="stStatusWidget"] {
@@ -302,8 +301,7 @@ def calculate_tournament_stats(df: pd.DataFrame) -> dict:
             "total_players": 0,
             "total_teams": 0,
             "divisions": 0,
-            "avg_goals_per_player": 0,
-            "avg_goals_per_team": 0,
+            "avg_goals_per_team": 0,   # kept
             "top_scorer_goals": 0,
             "competitive_balance": 0,
         }
@@ -316,7 +314,7 @@ def calculate_tournament_stats(df: pd.DataFrame) -> dict:
         "total_players": len(player_totals),
         "total_teams": len(team_totals),
         "divisions": df["Division"].nunique(),
-        "avg_goals_per_player": round(df["Goals"].sum() / max(1, len(player_totals)), 2),
+        # removed avg_goals_per_player
         "avg_goals_per_team": round(df["Goals"].sum() / max(1, len(team_totals)), 2),
         "top_scorer_goals": int(player_totals["Goals"].max()) if not player_totals.empty else 0,
         "competitive_balance": round(team_totals["Goals"].std(), 2) if len(team_totals) > 1 else 0,
@@ -486,11 +484,10 @@ def create_goals_distribution_histogram(df: pd.DataFrame):
 
 # ====================== UI COMPONENTS =============================
 def display_metric_cards(stats: dict):
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns(3)  # removed 4th slot
     c1.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_goals']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">TOTAL GOALS</div></div>""", unsafe_allow_html=True)
     c2.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_players']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">PLAYERS</div></div>""", unsafe_allow_html=True)
     c3.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_teams']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">TEAMS</div></div>""", unsafe_allow_html=True)
-    c4.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['avg_goals_per_player']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">AVG GOALS/PLAYER</div></div>""", unsafe_allow_html=True)
 
 def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
     if df.empty:
@@ -557,6 +554,7 @@ def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
             unsafe_allow_html=True,
         )
 
+        # Removed "Average: X goals per player" line
         player_goals = df.groupby(["Player", "Team"])["Goals"].sum()
         goals_1 = int((player_goals == 1).sum())
         goals_2_plus = int((player_goals >= 2).sum())
@@ -567,7 +565,6 @@ def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
             <div style="font-weight:600;color:#a78bfa;margin-bottom:.5rem;font-size:1.1rem;">📊 Competition Balance</div>
             <div style="color:#374151;line-height:1.5;">
                 <strong>{goals_1} players</strong> scored 1 goal, <strong>{goals_2_plus} players</strong> scored 2+ goals<br>
-                Average: <strong>{stats['avg_goals_per_player']} goals per player</strong><br>
                 {
                     "Well-balanced competition" if stats['competitive_balance'] < 2
                     else ("Some teams dominating" if stats['competitive_balance'] > 4 else "Moderate competition spread")
@@ -664,20 +661,12 @@ def create_comprehensive_zip_report(full_df: pd.DataFrame, filtered_df: pd.DataF
             if not div_cmp.empty:
                 z.writestr("05_division_comparison.csv", div_cmp.to_csv(index=False))
             stats = calculate_tournament_stats(filtered_df)
+            # stats no longer includes avg_goals_per_player
             z.writestr("06_tournament_statistics.csv", pd.DataFrame([stats]).to_csv(index=False))
         z.writestr(
             "README.txt",
             f"""ABEER BLUESTAR SOCCER FEST 2K25 - Data Package
 Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-FILES INCLUDED:
-1. 01_full_tournament_data.csv - Complete tournament dataset
-2. 02_filtered_tournament_data.csv - Data with applied filters
-3. 03_teams_detailed_analysis.csv - Comprehensive team statistics
-4. 04_players_ranking.csv - Player rankings and performance
-5. 05_division_comparison.csv - Division-wise comparison
-6. 06_tournament_statistics.csv - Overall tournament metrics
-7. README.txt - This file
 """,
         )
     zip_buffer.seek(0)
@@ -809,17 +798,9 @@ def main():
         if len(qualifying) > 0:
             tournament_data = tournament_data[tournament_data.set_index(["Player", "Team"]).index.isin(qualifying)].reset_index(drop=True)
 
-        st.divider()
-        st.caption(
-            f"""
-**Active Filters Summary:**
-- Division: {selected_division}
-- Teams: {len(selected_teams) if selected_teams else 'All'}
-- Player Search: {'Yes' if player_query.strip() else 'No'}
-- Min Goals: {min_goals}
-- Showing: {len(tournament_data)} records
-"""
-        )
+        # ---------------- HIDDEN: Active Filters Summary ----------------
+        # (Removed per request)
+        # ----------------------------------------------------------------
 
     # Tabs
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📥 DOWNLOADS"])
@@ -922,7 +903,7 @@ def main():
                 st.subheader("📊 Player Statistics")
                 player_goals = tournament_data.groupby(["Player", "Team"])["Goals"].sum()
                 st.metric("🎯 Highest Individual Score", int(player_goals.max()) if not player_goals.empty else 0)
-                st.metric("📈 Average Goals per Player", f"{player_goals.mean():.2f}" if not player_goals.empty else "0.00")
+                # Removed: Average Goals per Player metric
                 st.metric("👥 Players with 2+ Goals", int((player_goals >= 2).sum()))
                 st.metric("⚽ Single Goal Scorers", int((player_goals == 1).sum()))
 
@@ -971,17 +952,9 @@ def main():
     with tab6:
         create_download_section(full_tournament_data, tournament_data)
 
-    st.divider()
-    st.markdown(
-        """
-    <div style="text-align:center;padding:2rem;color:#64748b;">
-        <p>⚽ <strong>ABEER BLUESTAR SOCCER FEST 2K25</strong> Dashboard</p>
-        <p>Built with Streamlit • Real-time data from Google Sheets • Updated automatically</p>
-        <p>🏆 Celebrating football excellence and community spirit</p>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
+    # ---------------- HIDDEN: Footer blurb block ----------------
+    # (Removed per request)
+    # ------------------------------------------------------------
 
 # ====================== ENTRY POINT ===============================
 if __name__ == "__main__":
