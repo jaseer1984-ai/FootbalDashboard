@@ -1,28 +1,27 @@
 # ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard
 # Author: AI Assistant | Updated: 2025-08-28
-# Changes:
-# - Sidebar toggle visible (header not hidden)
-# - Removed "Quick Filters → Minimum goals per player"
-# - Player Search = type-to-search multiselect
+# Changes in this build:
+# - Sidebar toggle kept visible
+# - Removed "Minimum goals per player" quick filter
+# - Player Search is a type-to-search multiselect
 # - Removed every "avg goals per player" display
 # - Removed Active Filters Summary & footer text
 # - Fixed Altair TitleParams (fontWeight)
 # - Title shows football emoji correctly
-# - Added World Cup trophy watermark background
+# - Added a reliable World Cup trophy watermark background (works even if :before is ignored)
 
 from __future__ import annotations
 
 import streamlit as st
 import pandas as pd
 import altair as alt
-import numpy as np
 from pathlib import Path
 import zipfile
 import xml.etree.ElementTree as ET
 from io import BytesIO
 import requests
 from datetime import datetime
-import base64  # for optional local trophy image
+import base64
 
 # Optional imports with fallbacks
 PLOTLY_AVAILABLE = False
@@ -63,6 +62,8 @@ def inject_advanced_css():
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.15);
             margin: 1rem auto;
+            position: relative;   /* keeps our content above the watermark */
+            z-index: 1;
         }
 
         /* Keep header/toolbar visible so sidebar toggle shows */
@@ -177,15 +178,20 @@ def notify(msg: str, kind: str = "ok"):
     cls = {"ok": "status-ok", "warn": "status-warn", "err": "status-err"}.get(kind, "status-ok")
     st.markdown(f'<div class="status-pill {cls}">{msg}</div>', unsafe_allow_html=True)
 
-# ---------- Trophy watermark ----------
+# ---------- Robust Trophy watermark (DOM element, not :before) ----------
 def add_world_cup_watermark(*, image_path: str | None = None,
                             image_url: str | None = None,
                             opacity: float = 0.08,
-                            size: str = "min(70vw, 900px)"):
+                            size: str = "70vmin",
+                            y_offset: str = "8vh"):
     """
-    Shows a big, faint trophy behind the app.
-    - image_path: local 'assets/trophy.png' (recommended)
-    - image_url:  remote image (SVG/PNG)
+    Shows a big, faint trophy behind the whole app.
+    Uses a fixed-position <div> so it works across Streamlit versions.
+    - image_path: local file (e.g., 'assets/trophy.png' or '.svg')
+    - image_url:  remote image
+    - opacity:    0.03–0.15 looks good
+    - size:       CSS length (e.g., '70vmin', '800px', '65vw')
+    - y_offset:   vertical offset (e.g., '8vh', '0')
     """
     if image_path:
         ext = "svg+xml" if image_path.lower().endswith(".svg") else "png"
@@ -194,47 +200,51 @@ def add_world_cup_watermark(*, image_path: str | None = None,
     elif image_url:
         bg = f"url('{image_url}')"
     else:
-        bg = "url('https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f3c6.svg')"  # Trophy emoji SVG
+        # Gold trophy emoji (Twemoji SVG)
+        bg = "url('https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f3c6.svg')"
 
-    st.markdown(f"""
+    st.markdown(
+        f"""
     <style>
-      .stApp:before {{
-        content: "";
+      #wc-trophy {{
         position: fixed;
         inset: 0;
-        background: {bg} no-repeat center center fixed;
+        background-image: {bg};
+        background-repeat: no-repeat;
+        background-position: center {y_offset};
         background-size: {size};
         opacity: {opacity};
         pointer-events: none;
-        z-index: 0;
+        z-index: 0; /* below content; .block-container has z-index:1 */
       }}
-      .block-container {{ position: relative; z-index: 1; }}
     </style>
-    """, unsafe_allow_html=True)
+    <div id="wc-trophy"></div>
+    """,
+        unsafe_allow_html=True,
+    )
 
 # ====================== DATA PROCESSING ===========================
 def parse_xlsx_without_dependencies(file_bytes: bytes) -> pd.DataFrame:
-    """Parse XLSX file without openpyxl using zipfile + XML."""
     ns = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     with zipfile.ZipFile(BytesIO(file_bytes)) as z:
-        shared_strings = []
+        shared = []
         if "xl/sharedStrings.xml" in z.namelist():
             with z.open("xl/sharedStrings.xml") as f:
                 root = ET.parse(f).getroot()
                 for si in root.findall(".//main:si", ns):
                     text = "".join(t.text or "" for t in si.findall(".//main:t", ns))
-                    shared_strings.append(text)
+                    shared.append(text)
 
         if "xl/worksheets/sheet1.xml" not in z.namelist():
             return pd.DataFrame()
         with z.open("xl/worksheets/sheet1.xml") as f:
             root = ET.parse(f).getroot()
-            sheet_data = root.find("main:sheetData", ns)
-            if sheet_data is None:
+            sheet = root.find("main:sheetData", ns)
+            if sheet is None:
                 return pd.DataFrame()
-            rows_data, max_col_idx = [], 0
-            for row in sheet_data.findall("main:row", ns):
-                row_dict = {}
+            rows, max_col = [], 0
+            for row in sheet.findall("main:row", ns):
+                rd = {}
                 for cell in row.findall("main:c", ns):
                     ref = cell.attrib.get("r", "A1")
                     col_letters = "".join(ch for ch in ref if ch.isalpha())
@@ -242,24 +252,23 @@ def parse_xlsx_without_dependencies(file_bytes: bytes) -> pd.DataFrame:
                     for ch in col_letters:
                         col_idx = col_idx * 26 + (ord(ch) - 64)
                     col_idx -= 1
-                    cell_type = cell.attrib.get("t")
+                    ctype = cell.attrib.get("t")
                     v = cell.find("main:v", ns)
-                    value = v.text if v is not None else None
-                    if cell_type == "s" and value is not None:
-                        i = int(value)
-                        if 0 <= i < len(shared_strings):
-                            value = shared_strings[i]
-                    row_dict[col_idx] = value
-                    max_col_idx = max(max_col_idx, col_idx)
-                rows_data.append(row_dict)
+                    val = v.text if v is not None else None
+                    if ctype == "s" and val is not None:
+                        i = int(val)
+                        if 0 <= i < len(shared):
+                            val = shared[i]
+                    rd[col_idx] = val
+                    max_col = max(max_col, col_idx)
+                rows.append(rd)
 
-    if not rows_data:
+    if not rows:
         return pd.DataFrame()
-    data_matrix = [[row.get(i) for i in range(max_col_idx + 1)] for row in rows_data]
-    return pd.DataFrame(data_matrix)
+    matrix = [[r.get(i) for i in range(max_col + 1)] for r in rows]
+    return pd.DataFrame(matrix)
 
 def safe_read_excel(file_source) -> pd.DataFrame:
-    """Safely read Excel with fallback to custom parser."""
     if isinstance(file_source, (str, Path)):
         with open(file_source, "rb") as f:
             file_bytes = f.read()
@@ -273,8 +282,7 @@ def safe_read_excel(file_source) -> pd.DataFrame:
     except Exception:
         return parse_xlsx_without_dependencies(file_bytes)
 
-def find_division_columns(raw_df: pd.DataFrame) -> tuple[int | None, int | None]:
-    """Find B Division and A Division column start positions."""
+def find_division_columns(raw_df: pd.DataFrame):
     b_col, a_col = None, None
     for row_idx in range(min(2, len(raw_df))):
         row = raw_df.iloc[row_idx].astype(str).str.strip().str.lower()
@@ -289,7 +297,6 @@ def find_division_columns(raw_df: pd.DataFrame) -> tuple[int | None, int | None]
     return b_col, a_col
 
 def process_tournament_data(xlsx_bytes: bytes) -> pd.DataFrame:
-    """Process the tournament Excel data into structured format."""
     raw_df = safe_read_excel(xlsx_bytes)
     if raw_df.empty:
         return pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
@@ -300,34 +307,25 @@ def process_tournament_data(xlsx_bytes: bytes) -> pd.DataFrame:
 
     processed = []
 
-    def extract_division(start_col: int | None, division_name: str):
+    def extract_div(start_col: int | None, name: str):
         if start_col is None or start_col + 2 >= raw_df.shape[1]:
             return
-        end_col = start_col + 3
-        df = raw_df.iloc[data_start_row:, start_col:end_col].copy()
+        df = raw_df.iloc[data_start_row:, start_col:start_col + 3].copy()
+        df.columns = ["Team", "Player", "Goals"]
+        df = df.dropna(subset=["Team", "Player", "Goals"])
+        df["Goals"] = pd.to_numeric(df["Goals"], errors="coerce")
+        df = df.dropna(subset=["Goals"])
+        df["Goals"] = df["Goals"].astype(int)
+        df["Division"] = name
+        processed.extend(df.to_dict("records"))
 
-        if header_row < len(raw_df):
-            headers = raw_df.iloc[header_row, start_col:end_col].tolist()
-            headers = [str(h).strip() if h is not None else f"Col_{i}" for i, h in enumerate(headers)]
-        else:
-            headers = ["Team", "Player", "Goals"]
-
-        if len(headers) >= 3:
-            df.columns = ["Team", "Player", "Goals"]
-            df = df.dropna(subset=["Team", "Player", "Goals"])
-            df["Goals"] = pd.to_numeric(df["Goals"], errors="coerce")
-            df = df.dropna(subset=["Goals"])
-            df["Goals"] = df["Goals"].astype(int)
-            df["Division"] = division_name
-            processed.extend(df.to_dict("records"))
-
-    extract_division(b_start, "B Division")
-    extract_division(a_start, "A Division")
+    extract_div(b_start, "B Division")
+    extract_div(a_start, "A Division")
 
     if not processed:
         return pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
-    result = pd.DataFrame(processed)
-    return result[["Division", "Team", "Player", "Goals"]]
+    out = pd.DataFrame(processed)
+    return out[["Division", "Team", "Player", "Goals"]]
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_tournament_data(url: str) -> pd.DataFrame:
@@ -401,6 +399,8 @@ def create_division_comparison(df: pd.DataFrame) -> pd.DataFrame:
     return division_stats
 
 # ====================== VISUALIZATION FUNCTIONS ===================
+import altair as alt
+
 def create_horizontal_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title: str, color_scheme: str = "blues") -> alt.Chart:
     if df.empty:
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
@@ -420,7 +420,6 @@ def create_horizontal_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title:
     )
 
 def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
-    """Donut chart for goals by division (Altair TitleParams fontWeight fixed)."""
     if df.empty:
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
 
@@ -433,11 +432,7 @@ def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
         .properties(
             width=300,
             height=300,
-            title=alt.TitleParams(
-                text="Goals Distribution by Division",
-                fontSize=16,
-                fontWeight=600
-            ),
+            title=alt.TitleParams(text="Goals Distribution by Division", fontSize=16, fontWeight=600),
         )
     )
 
@@ -468,13 +463,8 @@ def create_advanced_scatter_plot(df: pd.DataFrame):
 
     if PLOTLY_AVAILABLE:
         fig = px.scatter(
-            team_stats,
-            x="Players",
-            y="Goals",
-            color="Division",
-            size="Goals",
-            hover_name="Team",
-            hover_data={"Players": True, "Goals": True},
+            team_stats, x="Players", y="Goals", color="Division", size="Goals",
+            hover_name="Team", hover_data={"Players": True, "Goals": True},
             title="Team Performance: Players vs Total Goals",
         )
         fig.update_traces(marker=dict(sizemode="diameter", sizemin=8, sizemax=30, line=dict(width=2, color="white"), opacity=0.85))
@@ -512,16 +502,7 @@ def create_goals_distribution_histogram(df: pd.DataFrame):
     player_goals = df.groupby(["Player", "Team"])["Goals"].sum().values
     if PLOTLY_AVAILABLE:
         fig = go.Figure(
-            data=[
-                go.Histogram(
-                    x=player_goals,
-                    nbinsx=max(1, len(set(player_goals))),
-                    marker_line_color="white",
-                    marker_line_width=1.5,
-                    opacity=0.85,
-                    hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>",
-                )
-            ]
+            data=[go.Histogram(x=player_goals, nbinsx=max(1, len(set(player_goals))), marker_line_color="white", marker_line_width=1.5, opacity=0.85, hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>")]
         )
         fig.update_layout(
             title="Distribution of Goals per Player",
@@ -621,7 +602,6 @@ def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
             unsafe_allow_html=True,
         )
 
-        # Competition balance (no avg-per-player line)
         player_goals = df.groupby(["Player", "Team"])["Goals"].sum()
         goals_1 = int((player_goals == 1).sum())
         goals_2_plus = int((player_goals >= 2).sum())
@@ -663,7 +643,6 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "records"):
 
     elif table_type == "teams":
         teams_summary = df.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Total_Goals=("Goals", "sum")).reset_index()
-        # Top scorer per team
         top_rows = []
         for team in teams_summary["Team"].unique():
             team_data = df[df["Team"] == team]
@@ -729,12 +708,7 @@ def create_comprehensive_zip_report(full_df: pd.DataFrame, filtered_df: pd.DataF
                 z.writestr("05_division_comparison.csv", div_cmp.to_csv(index=False))
             stats = calculate_tournament_stats(filtered_df)
             z.writestr("06_tournament_statistics.csv", pd.DataFrame([stats]).to_csv(index=False))
-        z.writestr(
-            "README.txt",
-            f"""ABEER BLUESTAR SOCCER FEST 2K25 - Data Package
-Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-""",
-        )
+        z.writestr("README.txt", f"ABEER BLUESTAR SOCCER FEST 2K25 - Data Package\nGenerated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
     zip_buffer.seek(0)
     return zip_buffer.getvalue()
 
@@ -803,7 +777,7 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
 def main():
     inject_advanced_css()
 
-    # Title with separate emoji so it doesn't get the gradient fill
+    # Title
     st.markdown("""
 <div class="app-title">
   <span class="ball">⚽</span>
@@ -811,14 +785,14 @@ def main():
 </div>
 """, unsafe_allow_html=True)
 
-    # Add faint World Cup trophy in the background (use URL or your local path)
+    # Add trophy background (URL or local file)
     add_world_cup_watermark(
         image_url="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f3c6.svg",
-        opacity=0.08,
-        size="min(65vw, 880px)"
+        opacity=0.10,    # increase if you want it more visible
+        size="68vmin",   # try "800px" or "60vw" if preferred
+        y_offset="6vh"
     )
-    # Alternatively, if you store a local file:
-    # add_world_cup_watermark(image_path="assets/trophy.png", opacity=0.07, size="min(65vw, 880px)")
+    # Or: add_world_cup_watermark(image_path="assets/trophy.svg", opacity=0.1, size="800px", y_offset="6vh")
 
     GOOGLE_SHEETS_URL = (
         "https://docs.google.com/spreadsheets/d/e/"
