@@ -1007,14 +1007,15 @@ def main():
                 st.altair_chart(create_horizontal_bar_chart(team_analysis.head(15), "Goals", "Team", "Team Goals Distribution", "viridis"), use_container_width=True)
 
     # TAB 4  =======>  WHITE PLAYER CARDS (no table)
-   with tab4:
-    st.header("👤 Player Profiles")
-    if tournament_data.empty:
-        st.info("🔍 No players match your current filters.")
-    else:
-        st.caption("Cards reflect total goals per player in the current filtered view.")
-        cards_html = build_player_cards_html(tournament_data)
-        st.markdown(cards_html, unsafe_allow_html=True)
+     
+    with tab4:
+        st.header("👤 Player Profiles")
+        if tournament_data.empty:
+            st.info("🔍 No players match your current filters.")
+        else:
+            st.caption("Cards reflect total goals per player in the current filtered view.")
+            cards_html = build_player_cards_html(tournament_data)
+            st.markdown(cards_html, unsafe_allow_html=True)
 
 
     # TAB 5
@@ -1069,6 +1070,7 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
         st.exception(e)
+
 
 
 
