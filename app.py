@@ -153,29 +153,32 @@ def inject_advanced_css():
         .status-warn{ background:#fef9c3; border-left:4px solid #f59e0b; color:#713f12; }
         .status-err { background:#fee2e2; border-left:4px solid #ef4444; color:#7f1d1d; }
 
-        /* ===== PLAYER CARDS (scoped styles; white cards) ===== */
         /* ===== PLAYER CARDS (white) ===== */
-.players-grid{
-  display:grid; gap:16px; grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
-  margin-top:.5rem;
-}
-.pcard{
-  background:#ffffff; color:#1e293b;
-  border-radius:16px; padding:16px 16px 12px 16px;
-  border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,.08);
-}
-.pcard h3{ margin:0 0 8px 0; font-size:1.15rem; line-height:1.35; font-weight:700; color:#111827; }
-.pcard .sub{ font-size:.9rem; color:#475569; }
-.pcard .muted{ color:#94a3b8; font-size:.9rem; margin:.15rem 0 .25rem; }
-.pcard .row{ display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px; margin:.5rem 0; }
-.pcard .label{ font-size:.9rem; color:#334155; white-space:nowrap; }
-.pcard .dotbar{ position:relative; height:10px; border-radius:999px; background:#f1f5f9; border:1px solid #e2e8f0; overflow:hidden; }
-.pcard .dotbar>span{ position:absolute; inset:0; width:var(--pct,0%); height:100%;
-  background:linear-gradient(90deg,#3b82f6,#06b6d4); transition:width .4s ease; }
-.pcard .num{ width:32px; text-align:right; font-variant-numeric:tabular-nums; color:#111827; }
-.pcard .pill{ display:inline-block; margin-top:.5rem; padding:.25rem .55rem; border-radius:9999px; font-size:.75rem;
-  background:#f8fafc; color:#0f172a; border:1px dashed #94a3b8; }
+        .players-grid{
+          display:grid; gap:16px; grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
+          margin-top:.5rem;
+        }
+        .pcard{
+          background:#ffffff; color:#1e293b;
+          border-radius:16px; padding:16px 16px 12px 16px;
+          border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,.08);
+        }
+        .pcard h3{ margin:0 0 8px 0; font-size:1.15rem; line-height:1.35; font-weight:700; color:#111827; }
+        .pcard .sub{ font-size:.9rem; color:#475569; }
+        .pcard .muted{ color:#94a3b8; font-size:.9rem; margin:.15rem 0 .25rem; }
+        .pcard .row{ display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px; margin:.5rem 0; }
+        .pcard .label{ font-size:.9rem; color:#334155; white-space:nowrap; }
+        .pcard .dotbar{ position:relative; height:10px; border-radius:999px; background:#f1f5f9; border:1px solid #e2e8f0; overflow:hidden; }
+        .pcard .dotbar>span{ position:absolute; inset:0; width:var(--pct,0%); height:100%;
+          background:linear-gradient(90deg,#3b82f6,#06b6d4); transition:width .4s ease; }
+        .pcard .num{ width:32px; text-align:right; font-variant-numeric:tabular-nums; color:#111827; }
+        .pcard .pill{ display:inline-block; margin-top:.5rem; padding:.25rem .55rem; border-radius:9999px; font-size:.75rem;
+          background:#f8fafc; color:#0f172a; border:1px dashed #94a3b8; }
 
+        @media (max-width: 768px) {
+            .block-container { padding: 1rem .5rem; margin: .5rem; width: 95vw; max-width: 95vw; }
+            .app-title .ball{font-size:24px;}
+        }
     </style>
     """,
         unsafe_allow_html=True,
@@ -484,7 +487,9 @@ def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
 def create_advanced_scatter_plot(df: pd.DataFrame):
     if df.empty:
         if PLOTLY_AVAILABLE:
-            fig = go.Figure(); fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False); return fig
+            fig = go.Figure()
+            fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False)
+            return fig
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
 
     team_stats = df.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Goals=("Goals", "sum")).reset_index()
@@ -524,13 +529,22 @@ def create_advanced_scatter_plot(df: pd.DataFrame):
 def create_goals_distribution_histogram(df: pd.DataFrame):
     if df.empty:
         if PLOTLY_AVAILABLE:
-            fig = go.Figure(); fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False); return fig
+            fig = go.Figure()
+            fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False)
+            return fig
         return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
 
     player_goals = df.groupby(["Player", "Team"])["Goals"].sum().values
     if PLOTLY_AVAILABLE:
         fig = go.Figure(
-            data=[go.Histogram(x=player_goals, nbinsx=max(1, len(set(player_goals))), marker_line_color="white", marker_line_width=1.5, opacity=0.85, hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>")]
+            data=[go.Histogram(
+                x=player_goals,
+                nbinsx=max(1, len(set(player_goals))),
+                marker_line_color="white",
+                marker_line_width=1.5,
+                opacity=0.85,
+                hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>"
+            )]
         )
         fig.update_layout(
             title="Distribution of Goals per Player",
@@ -814,12 +828,12 @@ def build_player_cards_html(df: pd.DataFrame) -> str:
     )
 
     html = ['<div class="players-grid">']
-    for _, r in agg.iterrows():   # ✅ correct form
+    for _, r in agg.iterrows():   # correct iteration
         name = r["Player"]
         team = r["Team"]
         division = r["Division"]
         goals = int(r["Goals"])
-        pct = min(100, goals * 50)  # scale bar % however you like
+        pct = min(100, goals * 50)  # scale for bar, adjust as needed
 
         html.append(f"""
         <div class="pcard">
@@ -842,9 +856,6 @@ def build_player_cards_html(df: pd.DataFrame) -> str:
 
     html.append("</div>")
     return "\n".join(html)
-
-
-
 
 # ====================== MAIN APPLICATION ==========================
 def main():
@@ -1007,7 +1018,6 @@ def main():
                 st.altair_chart(create_horizontal_bar_chart(team_analysis.head(15), "Goals", "Team", "Team Goals Distribution", "viridis"), use_container_width=True)
 
     # TAB 4  =======>  WHITE PLAYER CARDS (no table)
-     
     with tab4:
         st.header("👤 Player Profiles")
         if tournament_data.empty:
@@ -1016,7 +1026,6 @@ def main():
             st.caption("Cards reflect total goals per player in the current filtered view.")
             cards_html = build_player_cards_html(tournament_data)
             st.markdown(cards_html, unsafe_allow_html=True)
-
 
     # TAB 5
     with tab5:
@@ -1070,7 +1079,3 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
         st.exception(e)
-
-
-
-
