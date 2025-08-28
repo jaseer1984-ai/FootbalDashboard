@@ -803,14 +803,30 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
 
 # ============ NEW: Player Cards HTML (white background) ============
 def build_player_cards_html(df: pd.DataFrame) -> str:
-    ...
-    html = ['<div class="players-grid">']   # <— grid wrapper
-    for ..., r in agg.iterrows():
+    if df.empty:
+        return "<p>No players to display.</p>"
+
+    agg = (
+        df.groupby(["Player", "Team", "Division"])["Goals"]
+        .sum()
+        .reset_index()
+        .sort_values("Goals", ascending=False)
+    )
+
+    html = ['<div class="players-grid">']
+    for _, r in agg.iterrows():   # ✅ correct form
+        name = r["Player"]
+        team = r["Team"]
+        division = r["Division"]
+        goals = int(r["Goals"])
+        pct = min(100, goals * 50)  # scale bar % however you like
+
         html.append(f"""
         <div class="pcard">
           <h3>{name}</h3>
           <div class="sub">{team} • {division} • Age —</div>
           <div class="muted">—</div>
+
           <div class="row">
             <div class="label">⚽ Goals</div>
             <div class="dotbar"><span style="--pct:{pct}%"></span></div>
@@ -819,10 +835,14 @@ def build_player_cards_html(df: pd.DataFrame) -> str:
           <div class="row"><div class="label">👕 Appearances</div><div class="dotbar"><span style="--pct:0%"></span></div><div class="num">0</div></div>
           <div class="row"><div class="label">🟨 Yellow Cards</div><div class="dotbar"><span style="--pct:0%"></span></div><div class="num">0</div></div>
           <div class="row"><div class="label">🟥 Red Cards</div><div class="dotbar"><span style="--pct:0%"></span></div><div class="num">0</div></div>
+
           <span class="pill">No awards</span>
-        </div>""")
+        </div>
+        """)
+
     html.append("</div>")
     return "\n".join(html)
+
 
 
 
@@ -994,7 +1014,7 @@ def main():
     else:
         st.caption("Cards reflect total goals per player in the current filtered view.")
         cards_html = build_player_cards_html(tournament_data)
-        st.markdown(cards_html, unsafe_allow_html=True)  # <— important
+        st.markdown(cards_html, unsafe_allow_html=True)
 
 
     # TAB 5
@@ -1049,5 +1069,6 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
         st.exception(e)
+
 
 
