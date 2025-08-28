@@ -30,7 +30,7 @@ st.set_page_config(
     page_title="ABEER BLUESTAR SOCCER FEST 2K25",
     page_icon="⚽",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded",  # Sidebar opens by default; user can collapse using the built-in toggle
 )
 
 # ====================== STYLING ===================================
@@ -56,8 +56,10 @@ def inject_advanced_css():
             margin: 1rem auto;
         }
 
-        /* Keep Streamlit clean but DO NOT hide alerts globally anymore */
-        #MainMenu, header, footer, .stDeployButton, div[data-testid="stToolbar"], div[data-testid="stDecoration"], div[data-testid="stStatusWidget"] {
+        /* Keep Streamlit clean, but DO NOT hide the toolbar so the sidebar toggle remains */
+        #MainMenu, header, footer, .stDeployButton,
+        div[data-testid="stDecoration"],
+        div[data-testid="stStatusWidget"] {
             display: none !important;
         }
 
@@ -193,7 +195,7 @@ def parse_xlsx_without_dependencies(file_bytes: bytes) -> pd.DataFrame:
                     text = "".join(t.text or "" for t in si.findall(".//main:t", ns))
                     shared_strings.append(text)
 
-        # First worksheet (sheet1.xml). For robustness you could parse workbook.xml.
+        # First worksheet (sheet1.xml)
         if "xl/worksheets/sheet1.xml" not in z.namelist():
             return pd.DataFrame()
         with z.open("xl/worksheets/sheet1.xml") as f:
@@ -309,8 +311,7 @@ def fetch_tournament_data(url: str) -> pd.DataFrame:
         if not r.content:
             raise ValueError("Downloaded file is empty")
         return process_tournament_data(r.content)
-    except Exception as e:
-        # Avoid using st.error inside cache; return empty and handle outside
+    except Exception:
         return pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
 
 # ====================== ANALYTICS FUNCTIONS =======================
@@ -1011,5 +1012,4 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
-        # Show traceback for debugging
         st.exception(e)
