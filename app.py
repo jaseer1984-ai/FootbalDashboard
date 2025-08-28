@@ -36,21 +36,8 @@ st.set_page_config(
 def inject_advanced_css():
     st.markdown(
         """
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
 :root{ --sticky-tabs-top: 52px; }
-
-.stApp{ font-family:'Poppins',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-        background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); }
-.block-container{
-  padding-top:.5rem; padding-bottom:2rem; max-width:98vw; width:98vw;
-  background:rgba(255,255,255,.95); backdrop-filter:blur(15px); border-radius:20px;
-  box-shadow:0 20px 40px rgba(0,0,0,.15); margin:1rem auto; position:relative; z-index:1;
-}
-
-/* Hide Streamlit chrome we don't need */
-#MainMenu, footer, .stDeployButton, div[data-testid="stDecoration"], div[data-testid="stStatusWidget"]{ display:none !important; }
 
 /* Sticky first tab bar */
 .block-container [data-testid="stTabs"]:first-of-type{
@@ -119,11 +106,17 @@ def inject_advanced_css():
 .pc-footer{ display:flex; gap:8px; padding:12px 16px 16px; flex-wrap:wrap; }
 .pc-pill{ background:#111827; color:#fbbf24; border:1px dashed rgba(251,191,36,.35); padding:.25rem .5rem; border-radius:999px; font-size:.75rem; }
 
-@media (max-width: 768px){
+@media (max-width:768px){
   .block-container{ padding:1rem .5rem; margin:.5rem; width:95vw; max-width:95vw; }
   .app-title .ball{ font-size:24px; }
 }
 </style>
+""",
+        unsafe_allow_html=True,
+    )
+
+    # (keep your Altair theme registration below as-is)
+
 """,
         unsafe_allow_html=True,
     )
@@ -964,3 +957,4 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
         st.exception(e)
+
