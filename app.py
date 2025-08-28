@@ -12,10 +12,21 @@ import xml.etree.ElementTree as ET
 from io import BytesIO
 import requests
 from datetime import datetime
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import time
+
+# Optional imports with fallbacks
+PLOTLY_AVAILABLE = False
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    px = None
+    go = None
+    make_subplots = None
+    # Only show warning if user is not on a setup page
+    pass
 
 # ====================== CONFIGURATION =============================
 st.set_page_config(
@@ -494,12 +505,15 @@ def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
     
     return outer + center_text
 
-def create_advanced_scatter_plot(df: pd.DataFrame) -> go.Figure:
-    """Create advanced scatter plot using Plotly."""
+def create_advanced_scatter_plot(df: pd.DataFrame):
+    """Create advanced scatter plot using Plotly or Altair fallback."""
     if df.empty:
-        fig = go.Figure()
-        fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False)
-        return fig
+        if PLOTLY_AVAILABLE:
+            fig = go.Figure()
+            fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False)
+            return fig
+        else:
+            return alt.Chart().mark_text(text="No data available")
     
     # Prepare team statistics
     team_stats = df.groupby(["Team", "Division"]).agg({
@@ -508,91 +522,136 @@ def create_advanced_scatter_plot(df: pd.DataFrame) -> go.Figure:
     }).reset_index()
     team_stats.columns = ["Team", "Division", "Players", "Goals"]
     
-    fig = px.scatter(
-        team_stats,
-        x="Players",
-        y="Goals", 
-        color="Division",
-        size="Goals",
-        hover_name="Team",
-        hover_data={"Players": True, "Goals": True},
-        title="Team Performance: Players vs Total Goals",
-        color_discrete_map={"A Division": "#0ea5e9", "B Division": "#f59e0b"}
-    )
-    
-    fig.update_traces(
-        marker=dict(
-            sizemode="diameter",
-            sizemin=8,
-            sizemax=30,
-            line=dict(width=2, color="white"),
-            opacity=0.8
+    if PLOTLY_AVAILABLE:
+        fig = px.scatter(
+            team_stats,
+            x="Players",
+            y="Goals", 
+            color="Division",
+            size="Goals",
+            hover_name="Team",
+            hover_data={"Players": True, "Goals": True},
+            title="Team Performance: Players vs Total Goals",
+            color_discrete_map={"A Division": "#0ea5e9", "B Division": "#f59e0b"}
         )
-    )
-    
-    fig.update_layout(
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        font=dict(family="Poppins", size=12),
-        title=dict(font=dict(size=16, color="#1e293b")),
-        xaxis=dict(
-            title="Number of Players in Team",
-            gridcolor="#f1f5f9",
-            zeroline=False
-        ),
-        yaxis=dict(
-            title="Total Goals",
-            gridcolor="#f1f5f9",
-            zeroline=False
-        ),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.2,
-            xanchor="center",
-            x=0.5
-        ),
-        height=400
-    )
-    
-    return fig
-
-def create_goals_distribution_histogram(df: pd.DataFrame) -> go.Figure:
-    """Create goals distribution histogram."""
-    if df.empty:
-        fig = go.Figure()
-        fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False)
+        
+        fig.update_traces(
+            marker=dict(
+                sizemode="diameter",
+                sizemin=8,
+                sizemax=30,
+                line=dict(width=2, color="white"),
+                opacity=0.8
+            )
+        )
+        
+        fig.update_layout(
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            font=dict(family="Poppins", size=12),
+            title=dict(font=dict(size=16, color="#1e293b")),
+            xaxis=dict(
+                title="Number of Players in Team",
+                gridcolor="#f1f5f9",
+                zeroline=False
+            ),
+            yaxis=dict(
+                title="Total Goals",
+                gridcolor="#f1f5f9",
+                zeroline=False
+            ),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.2,
+                xanchor="center",
+                x=0.5
+            ),
+            height=400
+        )
         return fig
+    else:
+        # Altair fallback
+        chart = (
+            alt.Chart(team_stats)
+            .mark_circle(size=100, opacity=0.8)
+            .encode(
+                x=alt.X("Players:Q", title="Number of Players in Team"),
+                y=alt.Y("Goals:Q", title="Total Goals"),
+                color=alt.Color(
+                    "Division:N",
+                    scale=alt.Scale(range=["#0ea5e9", "#f59e0b"]),
+                    title="Division"
+                ),
+                size=alt.Size("Goals:Q", legend=None),
+                tooltip=["Team:N", "Division:N", "Players:Q", "Goals:Q"]
+            )
+            .properties(
+                title="Team Performance: Players vs Total Goals",
+                height=400
+            )
+        )
+        return chart
+
+def create_goals_distribution_histogram(df: pd.DataFrame):
+    """Create goals distribution histogram using Plotly or Altair fallback."""
+    if df.empty:
+        if PLOTLY_AVAILABLE:
+            fig = go.Figure()
+            fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False)
+            return fig
+        else:
+            return alt.Chart().mark_text(text="No data available")
     
     # Calculate player totals
     player_goals = df.groupby(["Player", "Team"])["Goals"].sum().values
     
-    fig = go.Figure(data=[
-        go.Histogram(
-            x=player_goals,
-            nbinsx=max(1, len(set(player_goals))),
-            marker_color="#a78bfa",
-            marker_line_color="white",
-            marker_line_width=1.5,
-            opacity=0.8,
-            hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>"
+    if PLOTLY_AVAILABLE:
+        fig = go.Figure(data=[
+            go.Histogram(
+                x=player_goals,
+                nbinsx=max(1, len(set(player_goals))),
+                marker_color="#a78bfa",
+                marker_line_color="white",
+                marker_line_width=1.5,
+                opacity=0.8,
+                hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>"
+            )
+        ])
+        
+        fig.update_layout(
+            title="Distribution of Goals per Player",
+            xaxis_title="Goals per Player",
+            yaxis_title="Number of Players",
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            font=dict(family="Poppins", size=12),
+            title_font=dict(size=16, color="#1e293b"),
+            xaxis=dict(gridcolor="#f1f5f9", zeroline=False),
+            yaxis=dict(gridcolor="#f1f5f9", zeroline=False),
+            height=400
         )
-    ])
-    
-    fig.update_layout(
-        title="Distribution of Goals per Player",
-        xaxis_title="Goals per Player",
-        yaxis_title="Number of Players",
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        font=dict(family="Poppins", size=12),
-        title_font=dict(size=16, color="#1e293b"),
-        xaxis=dict(gridcolor="#f1f5f9", zeroline=False),
-        yaxis=dict(gridcolor="#f1f5f9", zeroline=False),
-        height=400
-    )
-    
-    return fig
+        return fig
+    else:
+        # Altair fallback
+        hist_data = pd.DataFrame({"Goals": player_goals})
+        chart = (
+            alt.Chart(hist_data)
+            .mark_bar(color="#a78bfa", opacity=0.8)
+            .encode(
+                x=alt.X("Goals:Q", bin=alt.Bin(maxbins=10), title="Goals per Player"),
+                y=alt.Y("count():Q", title="Number of Players"),
+                tooltip=[
+                    alt.Tooltip("Goals:Q", bin=True, title="Goals"),
+                    alt.Tooltip("count():Q", title="Players")
+                ]
+            )
+            .properties(
+                title="Distribution of Goals per Player",
+                height=400
+            )
+        )
+        return chart
 
 # ====================== UI COMPONENTS =============================
 def display_metric_cards(stats: dict):
@@ -996,6 +1055,12 @@ For questions or support, please contact the tournament organizers.
 # ====================== MAIN APPLICATION ==========================
 def main():
     """Main application function."""
+    # Check for optional dependencies and show warnings
+    if not PLOTLY_AVAILABLE:
+        st.sidebar.warning("⚠️ Plotly not installed. Some advanced charts will use Altair instead.")
+        with st.sidebar.expander("💡 Install Advanced Charts"):
+            st.code("pip install plotly", language="bash")
+    
     # Apply styling
     inject_advanced_css()
     
@@ -1290,12 +1355,18 @@ def main():
             with col1:
                 st.subheader("📊 Goals Distribution")
                 goals_dist_chart = create_goals_distribution_histogram(tournament_data)
-                st.plotly_chart(goals_dist_chart, use_container_width=True)
+                if PLOTLY_AVAILABLE:
+                    st.plotly_chart(goals_dist_chart, use_container_width=True)
+                else:
+                    st.altair_chart(goals_dist_chart, use_container_width=True)
             
             with col2:
                 st.subheader("🎯 Team Performance Matrix")
                 scatter_chart = create_advanced_scatter_plot(tournament_data)
-                st.plotly_chart(scatter_chart, use_container_width=True)
+                if PLOTLY_AVAILABLE:
+                    st.plotly_chart(scatter_chart, use_container_width=True)
+                else:
+                    st.altair_chart(scatter_chart, use_container_width=True)
             
             st.divider()
             
