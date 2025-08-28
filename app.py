@@ -1,4 +1,4 @@
-# ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard
+# ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard (with Player Cards)
 # Author: AI Assistant | Updated: 2025-08-28
 # What’s new in this build:
 # - Tabs bar is STICKY (frozen) — content scrolls beneath it
@@ -9,6 +9,7 @@
 # - Fixed Altair TitleParams (fontWeight)
 # - Title shows football emoji correctly
 # - Robust World Cup trophy watermark background
+# - NEW: Player Profile Cards grid in PLAYERS tab (below ranking table)
 
 from __future__ import annotations
 
@@ -151,6 +152,28 @@ def inject_advanced_css():
         .status-ok  { background:#ecfeff; border-left:4px solid #06b6d4; color:#155e75; }
         .status-warn{ background:#fef9c3; border-left:4px solid #f59e0b; color:#713f12; }
         .status-err { background:#fee2e2; border-left:4px solid #ef4444; color:#7f1d1d; }
+
+        /* ---------- PLAYER CARDS (NEW) ---------- */
+        .player-grid{ display:grid; gap:16px; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); margin-top:.5rem; }
+        .player-card{
+            background:#0f172a; color:#e2e8f0; border-radius:16px; overflow:hidden;
+            box-shadow:0 10px 24px rgba(2,6,23,.35); border:1px solid rgba(148,163,184,.15);
+        }
+        .pc-top{ display:grid; grid-template-columns:120px 1fr; gap:16px; padding:16px; align-items:center; }
+        .pc-fig{
+            background:#d9e6a5; height:120px; border-radius:12px; display:flex; align-items:center; justify-content:center;
+            color:#0f172a; font-weight:700;
+        }
+        .pc-name{ font-size:1.1rem; font-weight:700; letter-spacing:.03em; }
+        .pc-sub{ opacity:.85; font-size:.85rem; }
+        .pc-body{ padding:16px; border-top:1px solid rgba(148,163,184,.15); }
+        .pc-row{ display:flex; align-items:center; gap:10px; margin:.4rem 0; }
+        .pc-label{ width:140px; font-size:.82rem; opacity:.85; }
+        .pc-bar{ flex:1; height:16px; background:#1f2937; border-radius:10px; overflow:hidden; position:relative; border:1px solid rgba(148,163,184,.12);}
+        .pc-bar>span{ display:block; height:100%; background:linear-gradient(90deg,#f97316,#ef4444); width:var(--pct,0%); transition:width .4s ease; }
+        .pc-num{ width:54px; text-align:right; font-variant-numeric:tabular-nums; }
+        .pc-footer{ display:flex; gap:8px; padding:12px 16px 16px; flex-wrap:wrap; }
+        .pc-pill{ background:#111827; color:#fbbf24; border:1px dashed rgba(251,191,36,.35); padding:.25rem .5rem; border-radius:999px; font-size:.75rem; }
 
         @media (max-width: 768px) {
             .block-container { padding: 1rem .5rem; margin: .5rem; width: 95vw; max-width: 95vw; }
@@ -781,6 +804,83 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 help="Download ZIP containing all data, summaries, and analytics",
             )
 
+# ====================== PLAYER CARD HELPERS (NEW) =================
+def _safe_int(x, default=0):
+    try:
+        if pd.isna(x):
+            return default
+        return int(float(x))
+    except Exception:
+        return default
+
+def build_player_profiles(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Builds a per-player profile from the available sheet.
+    Your sheet currently provides: Division, Team, Player, Goals.
+    We synthesize: Appearances, Yellow, Red, Shirt, Age, Awards (placeholder values).
+    If you later add columns with these names, real values will flow through automatically.
+    """
+    if df.empty:
+        return pd.DataFrame(columns=["Player","Team","Division","Goals","Appearances","Yellow","Red","Shirt","Age","Awards"])
+    prof = (
+        df.groupby(["Player","Team","Division"], dropna=False)["Goals"]
+        .sum().reset_index()
+        .rename(columns={"Goals":"Goals"})
+    )
+    # Add placeholder columns if missing
+    for col, default in [
+        ("Appearances", 0), ("Yellow", 0), ("Red", 0),
+        ("Shirt", "—"), ("Age", "—"), ("Awards", "No awards"),
+    ]:
+        if col not in prof.columns:
+            prof[col] = default
+    # Order columns
+    prof = prof[["Player","Team","Division","Goals","Appearances","Yellow","Red","Shirt","Age","Awards"]]
+    return prof
+
+def render_player_cards(profiles_df: pd.DataFrame):
+    if profiles_df.empty:
+        st.info("No player profiles available with current filters.")
+        return
+    max_goals = int(profiles_df["Goals"].max()) if not profiles_df["Goals"].empty else 1
+    # Compose HTML for each card
+    cards_html = []
+    for _, r in profiles_df.iterrows():
+        goals = _safe_int(r.get("Goals", 0))
+        apps  = _safe_int(r.get("Appearances", 0))
+        yel   = _safe_int(r.get("Yellow", 0))
+        red   = _safe_int(r.get("Red", 0))
+        shirt = r.get("Shirt", "—")
+        age   = r.get("Age", "—")
+        awards = str(r.get("Awards", "No awards"))
+        # Awards pills
+        if awards and awards.lower() != "no awards":
+            pill_html = "".join(f"<span class='pc-pill'>{a.strip()}</span>" for a in awards.split(",") if a.strip())
+        else:
+            pill_html = "<span class='pc-pill' style='opacity:.7;'>No awards</span>"
+
+        pct_goals = (goals / max_goals * 100) if max_goals else 0
+
+        cards_html.append(f"""
+<div class="player-card">
+  <div class="pc-top">
+    <div class="pc-fig">#{shirt}</div>
+    <div>
+      <div class="pc-name">{r['Player']}</div>
+      <div class="pc-sub">{r['Team']} • {r['Division']} • Age {age}</div>
+    </div>
+  </div>
+  <div class="pc-body">
+    <div class="pc-row"><div class="pc-label">Goals</div><div class="pc-bar"><span style="--pct:{pct_goals}%"></span></div><div class="pc-num">{goals}</div></div>
+    <div class="pc-row"><div class="pc-label">Appearances</div><div class="pc-bar"><span style="--pct:{apps}%"></span></div><div class="pc-num">{apps}</div></div>
+    <div class="pc-row"><div class="pc-label">Yellow Cards</div><div class="pc-bar"><span style="--pct:{yel}%"></span></div><div class="pc-num">{yel}</div></div>
+    <div class="pc-row"><div class="pc-label">Red Cards</div><div class="pc-bar"><span style="--pct:{red}%"></span></div><div class="pc-num">{red}</div></div>
+  </div>
+  <div class="pc-footer">{pill_html}</div>
+</div>
+        """)
+    st.markdown(f"<div class='player-grid'>{''.join(cards_html)}</div>", unsafe_allow_html=True)
+
 # ====================== MAIN APPLICATION ==========================
 def main():
     inject_advanced_css()
@@ -941,7 +1041,7 @@ def main():
             if not team_analysis.empty:
                 st.altair_chart(create_horizontal_bar_chart(team_analysis.head(15), "Goals", "Team", "Team Goals Distribution", "viridis"), use_container_width=True)
 
-    # TAB 4
+    # TAB 4 — PLAYERS (Ranking + Profile Cards)
     with tab4:
         st.header("👤 Players Analysis")
         if tournament_data.empty:
@@ -949,6 +1049,15 @@ def main():
         else:
             st.subheader("📋 Players Ranking")
             create_enhanced_data_table(tournament_data, "players")
+
+            st.divider()
+            st.subheader("🎴 Player Profiles")
+            # Build profiles from the CURRENT filtered data
+            profiles_df = build_player_profiles(tournament_data)
+            # Sort by goals desc, then name for nicer reading
+            profiles_df = profiles_df.sort_values(["Goals", "Player"], ascending=[False, True])
+            render_player_cards(profiles_df)
+
             st.divider()
             c1, c2 = st.columns(2)
             with c1:
