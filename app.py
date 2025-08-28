@@ -58,6 +58,37 @@ def inject_advanced_css():
             margin: 1rem auto;
         }
         
+        /* HIDE ALL UNWANTED ELEMENTS */
+        .stAlert {
+            display: none !important;
+        }
+        
+        .streamlit-expanderHeader {
+            display: none !important;
+        }
+        
+        .streamlit-expander {
+            display: none !important;
+        }
+        
+        /* Hide Streamlit branding */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        
+        /* Hide deploy button and other streamlit elements */
+        .stDeployButton {display: none !important;}
+        div[data-testid="stToolbar"] {display: none !important;}
+        div[data-testid="stDecoration"] {display: none !important;}
+        div[data-testid="stStatusWidget"] {display: none !important;}
+        
+        /* Hide warning messages and alerts */
+        div[data-testid="stAlert"] {display: none !important;}
+        div[role="alert"] {display: none !important;}
+        
+        /* Hide expandable install sections */
+        div[data-testid="stExpander"] {display: none !important;}
+        
         /* Main title styling */
         h1 {
             text-align: center; 
@@ -1055,13 +1086,7 @@ For questions or support, please contact the tournament organizers.
 # ====================== MAIN APPLICATION ==========================
 def main():
     """Main application function."""
-    # Check for optional dependencies and show warnings
-    if not PLOTLY_AVAILABLE:
-        st.sidebar.warning("⚠️ Plotly not installed. Some advanced charts will use Altair instead.")
-        with st.sidebar.expander("💡 Install Advanced Charts"):
-            st.code("pip install plotly", language="bash")
-    
-    # Apply styling
+    # Apply styling (warnings will be hidden via CSS)
     inject_advanced_css()
     
     # Header
