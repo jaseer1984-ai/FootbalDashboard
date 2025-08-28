@@ -1,5 +1,13 @@
 # ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard
 # Author: AI Assistant | Updated: 2025-08-28
+# Notes:
+# - Sidebar toggle works (header visible)
+# - Removed "Quick Filters → Minimum goals per player"
+# - Player Search = type-to-search multiselect of names
+# - Removed every "avg goals per player" display (cards/insights/players/analytics)
+# - Removed "Active Filters Summary" block and footer text
+# - Fixed Altair TitleParams (fontWeight)
+# - Fixed title so the football icon renders (emoji split from gradient text)
 
 from __future__ import annotations
 
@@ -62,18 +70,21 @@ def inject_advanced_css():
             display: none !important;
         }
 
-        /* Title */
-        h1 {
-            text-align: center;
-            margin: 0.5rem 0 1.5rem 0;
-            letter-spacing: 0.05em;
-            font-weight: 700;
-            line-height: 1.1;
+        /* App title (split icon + gradient text so emoji renders properly) */
+        .app-title{
+            display:flex; align-items:center; justify-content:center; gap:12px;
+            margin: .75rem 0 1.5rem;
+        }
+        .app-title .ball{
+            font-size: 32px; line-height:1;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,.15));
+        }
+        .app-title .title{
+            font-weight:700; letter-spacing:.05em;
             font-size: clamp(22px, 3.5vw, 36px);
             background: linear-gradient(45deg, #0ea5e9, #1e40af, #7c3aed);
-            -webkit-background-clip: text;
+            -webkit-background-clip: text; background-clip: text;
             -webkit-text-fill-color: transparent;
-            background-clip: text;
             text-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
@@ -121,7 +132,7 @@ def inject_advanced_css():
 
         @media (max-width: 768px) {
             .block-container { padding: 1rem .5rem; margin: .5rem; width: 95vw; max-width: 95vw; }
-            h1 { font-size: clamp(18px, 5vw, 24px); }
+            .app-title .ball{font-size:24px;}
         }
     </style>
     """,
@@ -389,7 +400,7 @@ def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
             title=alt.TitleParams(
                 text="Goals Distribution by Division",
                 fontSize=16,
-                fontWeight=600  # correct key
+                fontWeight=600
             ),
         )
     )
@@ -755,7 +766,14 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
 # ====================== MAIN APPLICATION ==========================
 def main():
     inject_advanced_css()
-    st.markdown("<h1>⚽ ABEER BLUESTAR SOCCER FEST 2K25</h1>", unsafe_allow_html=True)
+
+    # Title with separate emoji so it doesn't get the gradient fill
+    st.markdown("""
+<div class="app-title">
+  <span class="ball">⚽</span>
+  <span class="title">ABEER BLUESTAR SOCCER FEST 2K25</span>
+</div>
+""", unsafe_allow_html=True)
 
     GOOGLE_SHEETS_URL = (
         "https://docs.google.com/spreadsheets/d/e/"
@@ -820,8 +838,8 @@ def main():
         if selected_players:
             tournament_data = tournament_data[tournament_data["Player"].isin(selected_players)]
 
-        # Quick Filters (min goals per player) — removed per request
-        # Active Filters Summary — removed per request
+        # Quick Filters (min goals per player) — removed
+        # Active Filters Summary — removed
 
     # Tabs
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📥 DOWNLOADS"])
@@ -946,11 +964,10 @@ def main():
             st.subheader("🔍 Detailed Performance Metrics")
             c1, c2, c3 = st.columns(3)
             with c1:
-                st.markdown("**🏆 Team Efficiency**")
-                team_eff = tournament_data.groupby("Team").agg(Players=("Player", "nunique"), Goals=("Goals", "sum"))
-                team_eff["Goals_per_Player"] = (team_eff["Goals"] / team_eff["Players"]).round(2)
-                for team, row in team_eff.sort_values("Goals_per_Player", ascending=False).head(5).iterrows():
-                    st.write(f"• **{team}**: {row['Goals_per_Player']} goals/player")
+                st.markdown("**🏆 Top Teams (Total Goals)**")
+                tg = tournament_data.groupby("Team")["Goals"].sum().sort_values(ascending=False).head(5)
+                for team, g in tg.items():
+                    st.write(f"• **{team}**: {int(g)} goals")
             with c2:
                 st.markdown("**⚽ Scoring Patterns**")
                 counts = tournament_data["Goals"].value_counts().sort_index()
@@ -963,10 +980,9 @@ def main():
                     div_data = tournament_data[tournament_data["Division"] == division]
                     total_goals = int(div_data["Goals"].sum())
                     unique_players = int(div_data["Player"].nunique())
-                    avg_goals = total_goals / unique_players if unique_players else 0
                     st.write(f"• **{division}**:")
                     st.write(f"  - {total_goals} total goals")
-                    st.write(f"  - {avg_goals:.2f} avg/player")
+                    st.write(f"  - {unique_players} unique players")
 
     # TAB 6
     with tab6:
