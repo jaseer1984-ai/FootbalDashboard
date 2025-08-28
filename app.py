@@ -3,6 +3,7 @@
 # - Integer ticks on charts / safe slider
 # - Full vs Filtered downloads (+ Teams/Players CSV)
 # - Robust XLSX parsing without openpyxl
+# - NEW: Optional light background image (World Cup photo) without affecting text
 
 import streamlit as st
 import pandas as pd
@@ -15,33 +16,59 @@ import requests
 from datetime import datetime
 
 # ---------------------- FLUID LOOK & FEEL ------------------------------------
-def inject_fluid_css():
-    st.markdown("""
+def inject_fluid_css(bg_url: str | None = None, opacity: float = 0.06, grayscale: bool = True):
+    """
+    Injects the base theme and (optionally) a LIGHT background image behind content.
+    The image sits on a ::before pseudo-layer, so widgets/tables remain crisp.
+    """
+    # --- BACKGROUND: build CSS only if URL present
+    bg_css = ""
+    if bg_url:
+        # Keep it subtle: low opacity, cover, fixed; under everything (z-index:-1)
+        bg_css = f"""
+        .stApp::before {{
+          content: "";
+          position: fixed;
+          inset: 0;
+          z-index: -1;
+          background-image: url('{bg_url}');
+          background-size: cover;
+          background-position: center;
+          background-repeat: no-repeat;
+          opacity: {max(0.0, min(opacity, 0.25))};  /* safety clamp */
+          {"filter: grayscale(100%);" if grayscale else ""}
+        }}
+        """
+
+    st.markdown(f"""
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-      .stApp { font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-      .block-container { padding-top:.6rem; padding-bottom:2rem; max-width:96vw; width:96vw; }
-      @media (min-width: 1600px) { .block-container { max-width:1500px; width:1500px; } }
+      .stApp {{ font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }}
+      .block-container {{ padding-top:.6rem; padding-bottom:2rem; max-width:96vw; width:96vw; }}
+      @media (min-width: 1600px) {{ .block-container {{ max-width:1500px; width:1500px; }} }}
       /* Smaller, wrapping title */
-      h1 {
+      h1 {{
         text-align:center; margin:.2rem 0 .7rem 0; letter-spacing:.04em; font-weight:700; line-height:1.15;
-        font-size: clamp(16px, 2vw, 28px);  /* reduced size */
+        font-size: clamp(16px, 2vw, 28px);
         white-space:normal; overflow-wrap:anywhere; word-break:break-word;
-      }
-      .stButton > button, .stDownloadButton > button {
+      }}
+      .stButton > button, .stDownloadButton > button {{
         background:#0ea5e9 !important; color:#fff !important; border:0 !important;
         border-radius:10px !important; padding:.45rem .9rem !important; font-weight:600 !important;
-      }
-      .stButton > button:hover, .stDownloadButton > button:hover { filter:brightness(1.06); }
-      .stDataFrame table { border-radius:10px; overflow:hidden; }
+      }}
+      .stButton > button:hover, .stDownloadButton > button:hover {{ filter:brightness(1.06); }}
+      .stDataFrame table {{ border-radius:10px; overflow:hidden; background:#ffffff; }}  /* ensure white table body */
+      .stTabs [data-baseweb="tab"] {{ font-weight:600; }}
+      {bg_css}
     </style>
     """, unsafe_allow_html=True)
 
+    # Altair theme
     alt.themes.register("fluid", lambda: {
         "config": {
             "view": {"stroke": "transparent"},
-            "background": "transparent",
+            "background": "transparent",   # charts float nicely; table area remains white
             "title": {"font": "Poppins", "fontSize": 18, "color": "#0b1e35"},
             "axis":  {"labelColor": "#345", "titleColor": "#234", "gridColor": "#e6eef8"},
             "legend":{"labelColor": "#345", "titleColor": "#234"},
@@ -336,7 +363,20 @@ def analytics_charts(df: pd.DataFrame):
 # ========================= App ===============================================
 def main():
     st.set_page_config(page_title="ABEER BLUESTAR SOCCER FEST 2K25", page_icon="⚽", layout="wide")
-    inject_fluid_css()
+
+    # ----- BACKGROUND controls (optional) -----
+    with st.sidebar.expander("🎨 Background (optional)", expanded=False):
+        use_bg = st.checkbox("Use World Cup background", value=False)
+        bg_url = st.text_input(
+            "Image URL",
+            value="",
+            placeholder="Paste an image URL (e.g. a stadium photo)…"
+        )
+        bg_opacity = st.slider("Opacity", 0.0, 0.25, 0.06, 0.01, help="Keep low to avoid distraction")
+        bg_gray = st.checkbox("Grayscale", value=True)
+
+    # Inject CSS and optional background
+    inject_fluid_css(bg_url if use_bg and bg_url.strip() else None, opacity=bg_opacity, grayscale=bg_gray)
 
     st.markdown("<h1>ABEER BLUESTAR SOCCER FEST 2K25</h1>", unsafe_allow_html=True)
 
