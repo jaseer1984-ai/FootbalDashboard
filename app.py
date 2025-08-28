@@ -695,68 +695,48 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "records"):
         )
 
 # -------- Player cards (exact model, fixed 0/50/100 bar) --------
-def render_player_cards(df: pd.DataFrame, max_players: int | None = None):
-    if df.empty:
-        st.info("No players match your current filters.")
-        return
+def render_player_cards(df: pd.DataFrame):
+    cards = []
+    for _, row in df.iterrows():
+        goals = int(row.get("Goals", 0) or 0)
+        apps = int(row.get("Appearances", 0) or 0)
+        yel = int(row.get("Yellow Cards", 0) or 0)
+        red = int(row.get("Red Cards", 0) or 0)
 
-    players = (
-        df.groupby(["Player", "Team", "Division"])["Goals"]
-        .sum()
-        .reset_index()
-        .sort_values(["Goals", "Player"], ascending=[False, True])
-    )
-    if max_players:
-        players = players.head(max_players)
+        # scale goal bar: 0=0%, 1=50%, >=2=100%
+        g_pct = "0%" if goals == 0 else "50%" if goals == 1 else "100%"
 
-    cards_html = ['<div class="player-grid">']
-    for _, r in players.iterrows():
-        name = str(r["Player"])
-        team = str(r["Team"])
-        division = str(r["Division"])
-        goals = int(r["Goals"])
-
-        # Fixed mapping to match your model: 0→0%, 1→50%, 2+→100%
-        if goals <= 0:
-            pct = 0
-        elif goals == 1:
-            pct = 50
-        else:
-            pct = 100
-
-        card = f"""
+        card_html = f"""
         <div class="pcard">
-            <h3>{name}</h3>
-            <div class="sub">{team} • {division} • Age —</div>
+            <h3>{row['Player']}</h3>
+            <div class="sub">{row['Team']} • {row['Division']} • Age —</div>
             <div class="muted">—</div>
 
-            <div class="row">
-                <div class="label">⚽ Goals</div>
-                <div class="dotbar"><span style="--pct:{pct}%"></span></div>
-                <div class="num">{goals}</div>
-            </div>
-            <div class="row">
-                <div class="label">👕 Appearances</div>
+            <div class="row"><div class="label">⚽ Goals</div>
+                <div class="dotbar"><span style="--pct:{g_pct}"></span></div>
+                <div class="num">{goals}</div></div>
+
+            <div class="row"><div class="label">👕 Appearances</div>
                 <div class="dotbar"><span style="--pct:0%"></span></div>
-                <div class="num">0</div>
-            </div>
-            <div class="row">
-                <div class="label">🟨 Yellow Cards</div>
+                <div class="num">{apps}</div></div>
+
+            <div class="row"><div class="label">🟨 Yellow Cards</div>
                 <div class="dotbar"><span style="--pct:0%"></span></div>
-                <div class="num">0</div>
-            </div>
-            <div class="row">
-                <div class="label">🟥 Red Cards</div>
+                <div class="num">{yel}</div></div>
+
+            <div class="row"><div class="label">🟥 Red Cards</div>
                 <div class="dotbar"><span style="--pct:0%"></span></div>
-                <div class="num">0</div>
-            </div>
+                <div class="num">{red}</div></div>
 
             <span class="pill">No awards</span>
         </div>
         """
-        cards_html.append(card)
-    cards_html.append("</div>")
-    st.markdown("\n".join(cards_html), unsafe_allow_html=True)
+        cards.append(card_html)
+
+    # join all cards into a grid
+    html = '<div class="player-grid">' + "\n".join(cards) + "</div>"
+    st.markdown(html, unsafe_allow_html=True)   # <-- key fix
+
 
 def create_comprehensive_zip_report(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
     zip_buffer = BytesIO()
@@ -1064,3 +1044,4 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
         st.exception(e)
+
