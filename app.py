@@ -698,13 +698,19 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
     if df.empty:
         st.info("📋 No data with current filters.")
         return
+
     if table_type == "players":
-        players_summary = df.groupby(["Player", "Team", "Division"])["Goals"].sum().reset_index()
-        players_summary = players_summary.sort_values(["Goals", "Player"], ascending=[False, True])
+        players_summary = (
+            df.groupby(["Player", "Team", "Division"])["Goals"].sum().reset_index()
+        )
+        players_summary = players_summary.sort_values(
+            ["Goals", "Player"], ascending=[False, True]
+        )
         players_summary.insert(0, "Rank", range(1, len(players_summary) + 1))
         st.dataframe(
             players_summary,
-            use_container_width=True, hide_index=True,
+            use_container_width=True,
+            hide_index=True,
             column_config={
                 "Rank": st.column_config.NumberColumn("Rank", format="%d", width="small"),
                 "Player": st.column_config.TextColumn("Player", width="large"),
@@ -713,31 +719,52 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
                 "Goals": st.column_config.NumberColumn("Goals", format="%d", width="small"),
             },
         )
+
     elif table_type == "records":
-        keep = ["Player", "Team", "Division", "Goals"]
-        for opt in ["Appearances", "Yellow Cards", "Red Cards", "Last Match", "Last Action", "Card Events"]:
-            if opt in df.columns:
-                keep.append(opt)
-        display_df = df[keep].copy()
+        # ✅ aggregate so each player shows only once
+        work = df.copy()
+        for c in ["Goals", "Appearances", "Yellow Cards", "Red Cards", "Last Match"]:
+            if c in work.columns:
+                work[c] = pd.to_numeric(work[c], errors="coerce")
 
-        # Last Match as text with '-' for missing
-        if "Last Match" in display_df.columns:
-            lm = pd.to_numeric(display_df["Last Match"], errors="coerce")
-            display_df["Last Match"] = lm.apply(lambda x: "-" if pd.isna(x) else str(int(x)))
+        agg_map = {"Goals": ("Goals", "sum")}
+        if "Appearances" in work.columns: agg_map["Appearances"] = ("Appearances", "max")
+        if "Yellow Cards" in work.columns: agg_map["Yellow Cards"] = ("Yellow Cards", "max")
+        if "Red Cards" in work.columns:    agg_map["Red Cards"]   = ("Red Cards", "max")
+        if "Last Match" in work.columns:   agg_map["Last Match"]  = ("Last Match", "max")
+        if "Last Action" in work.columns:  agg_map["Last Action"] = ("Last Action", "first")
+        if "Card Events" in work.columns:  agg_map["Card Events"] = ("Card Events", "first")
 
-        # Coerce numeric columns
+        display_df = (
+            work.groupby(["Player", "Team", "Division"])
+                .agg(**agg_map)
+                .reset_index()
+        )
+
+        # Clean numerics
         for c in ["Goals", "Appearances", "Yellow Cards", "Red Cards"]:
             if c in display_df.columns:
                 display_df[c] = pd.to_numeric(display_df[c], errors="coerce").fillna(0).astype(int)
 
-        # Replace None with '-' in object columns
+        # Match shown as text with "-" if missing
+        if "Last Match" in display_df.columns:
+            lm = pd.to_numeric(display_df["Last Match"], errors="coerce")
+            display_df["Last Match"] = lm.apply(lambda x: "-" if pd.isna(x) else str(int(x)))
+
+        # Replace None/NaN with "-"
         for c in display_df.select_dtypes(include="object").columns:
             display_df[c] = display_df[c].replace({None: "-"}).fillna("-")
 
-        display_df = display_df.sort_values(["Goals", "Player"], ascending=[False, True]).reset_index(drop=True)
+        display_df = display_df.sort_values(
+            ["Goals", "Player"], ascending=[False, True]
+        ).reset_index(drop=True)
 
+        # Slightly narrower table to avoid full-width stretch
         st.dataframe(
-            display_df, use_container_width=True, hide_index=True,
+            display_df,
+            use_container_width=False,
+            width=900,
+            hide_index=True,
             column_config={
                 "Player": st.column_config.TextColumn("Player", width="large"),
                 "Team": st.column_config.TextColumn("Team", width="medium"),
@@ -746,13 +773,11 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
                 **({"Appearances": st.column_config.NumberColumn("Appearances", format="%d", width="small")} if "Appearances" in display_df.columns else {}),
                 **({"Yellow Cards": st.column_config.NumberColumn("Yellow", format="%d", width="small")} if "Yellow Cards" in display_df.columns else {}),
                 **({"Red Cards": st.column_config.NumberColumn("Red", format="%d", width="small")} if "Red Cards" in display_df.columns else {}),
-                # ⬇️ renamed labels here
                 **({"Last Match": st.column_config.TextColumn("Match", width="small")} if "Last Match" in display_df.columns else {}),
                 **({"Last Action": st.column_config.TextColumn("Action", width="large")} if "Last Action" in display_df.columns else {}),
                 **({"Card Events": st.column_config.TextColumn("Card Events", width="large")} if "Card Events" in display_df.columns else {}),
             },
         )
-
 
 # ---------- Players Card View renderer ----------
 def render_player_cards(df: pd.DataFrame):
@@ -1352,4 +1377,5 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
         st.exception(e)
+
 
