@@ -33,6 +33,14 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# 👉👉 replace these with your own public/export links when needed
+GOALS_SHEET_URL = (
+    "https://docs.google.com/spreadsheets/d/e/"
+    "2PACX-1vRpCD-Wh_NnGQjJ1Mh3tuU5Mdcl8TK41JopMUcSnfqww8wkPXKKgRyg7v4sC_vuUw/pub?output=xlsx"
+)
+# Your CARDS tab (single-sheet export)
+CARDS_SHEET_URL = "https://docs.google.com/spreadsheets/d/1Bbx7nCS_j7g1wsK3gHpQQnWkpTqlwkHu/export?format=xlsx&gid=954169595"
+
 # ====================== STYLING ===================================
 def inject_advanced_css():
     st.markdown(
@@ -269,7 +277,6 @@ def process_tournament_data(xlsx_bytes: bytes) -> pd.DataFrame:
         # First 3 columns: Team, Player, Goals (optional extra columns later)
         df = raw_df.iloc[data_start_row:, start_col : start_col + 6].copy()  # read a few extra to be safe
         df.columns = [f"C{i}" for i in range(df.shape[1])]
-        # Map to expected names
         df = df.rename(columns={"C0": "Team", "C1": "Player", "C2": "Goals",
                                 "C3": "Appearances", "C4": "Yellow Cards", "C5": "Red Cards"})
         df = df.dropna(subset=["Team", "Player", "Goals"], how="any")
@@ -293,6 +300,81 @@ def process_tournament_data(xlsx_bytes: bytes) -> pd.DataFrame:
             cols.append(opt)
     return out[cols]
 
+# ----- NEW: parse CARDS sheet and merge it into the main dataset -----
+def process_cards_sheet(xlsx_bytes: bytes) -> pd.DataFrame:
+    """
+    Reads the CARDS sheet layout:
+      B-Division block (Team | Player Name | CARDS),
+      A-Division block (Team | Player Name | CARDS).
+    Produces rows with Yellow/Red counts per player.
+    """
+    raw_df = safe_read_excel(xlsx_bytes)
+    if raw_df.empty:
+        return pd.DataFrame(columns=["Division", "Team", "Player", "Yellow Cards", "Red Cards"])
+
+    b_start, a_start = find_division_columns(raw_df)
+    header_row = 1 if len(raw_df) > 1 else 0
+    data_start_row = header_row + 1
+
+    rows = []
+
+    def norm(x: str) -> str:
+        return str(x).strip()
+
+    def extract_div(start_col: int | None, name: str):
+        if start_col is None or start_col + 3 > raw_df.shape[1]:
+            return
+        df = raw_df.iloc[data_start_row:, start_col : start_col + 3].copy()
+        df.columns = ["Team", "Player", "Card"]
+        df = df.dropna(subset=["Team", "Player"], how="any")
+        df["Team"] = df["Team"].map(norm)
+        df["Player"] = df["Player"].map(norm)
+        df["Card"] = df["Card"].astype(str).str.strip().str.upper()
+
+        # Map text to counts; blank -> 0
+        df["Yellow Cards"] = (df["Card"] == "YELLOW").astype(int)
+        df["Red Cards"] = (df["Card"] == "RED").astype(int)
+        df["Division"] = name
+
+        # Sum duplicates for the same player/team (in case multiple rows exist)
+        agg = (
+            df.groupby(["Division", "Team", "Player"], as_index=False)[["Yellow Cards", "Red Cards"]]
+            .sum(min_count=1)
+        )
+        rows.extend(agg.to_dict("records"))
+
+    extract_div(b_start, "B Division")
+    extract_div(a_start, "A Division")
+
+    return pd.DataFrame(rows) if rows else pd.DataFrame(
+        columns=["Division", "Team", "Player", "Yellow Cards", "Red Cards"]
+    )
+
+def merge_cards(goals_df: pd.DataFrame, cards_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Left-merge card counts onto the goals dataset by Player+Team+Division.
+    Missing values become 0.
+    """
+    if goals_df.empty or cards_df.empty:
+        out = goals_df.copy()
+        if not out.empty:
+            for c in ["Yellow Cards", "Red Cards"]:
+                if c not in out.columns:
+                    out[c] = 0
+        return out
+
+    cards_agg = (
+        cards_df.groupby(["Player", "Team", "Division"], as_index=False)[["Yellow Cards", "Red Cards"]]
+        .sum(min_count=1)
+    )
+    merged = goals_df.merge(cards_agg, on=["Player", "Team", "Division"], how="left")
+    for c in ["Yellow Cards", "Red Cards"]:
+        if c in merged.columns:
+            merged[c] = merged[c].fillna(0).astype(int)
+        else:
+            merged[c] = 0
+    return merged
+
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_tournament_data(url: str) -> pd.DataFrame:
     try:
@@ -303,6 +385,17 @@ def fetch_tournament_data(url: str) -> pd.DataFrame:
         return process_tournament_data(r.content)
     except Exception:
         return pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_cards_data(url: str) -> pd.DataFrame:
+    try:
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        if not r.content:
+            raise ValueError("Downloaded file is empty")
+        return process_cards_sheet(r.content)
+    except Exception:
+        return pd.DataFrame(columns=["Division", "Team", "Player", "Yellow Cards", "Red Cards"])
 
 # ====================== ANALYTICS HELPERS =========================
 def calculate_tournament_stats(df: pd.DataFrame) -> dict:
@@ -456,7 +549,15 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
         st.info("📋 No data with current filters.")
         return
     if table_type == "players":
-        players_summary = df.groupby(["Player", "Team", "Division"])["Goals"].sum().reset_index()
+        players_summary = df.groupby(["Player", "Team", "Division"])[["Goals"]].sum().reset_index()
+        # If cards are present, bring them too (sum to be safe)
+        for c in ["Yellow Cards", "Red Cards"]:
+            if c in df.columns:
+                add = df.groupby(["Player", "Team", "Division"])[c].sum().reset_index()
+                players_summary = players_summary.merge(add, on=["Player", "Team", "Division"], how="left")
+        for c in ["Yellow Cards", "Red Cards"]:
+            if c in players_summary.columns:
+                players_summary[c] = players_summary[c].fillna(0).astype(int)
         players_summary = players_summary.sort_values(["Goals", "Player"], ascending=[False, True])
         players_summary.insert(0, "Rank", range(1, len(players_summary) + 1))
         st.dataframe(
@@ -468,6 +569,8 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
                 "Team": st.column_config.TextColumn("Team", width="medium"),
                 "Division": st.column_config.TextColumn("Division", width="small"),
                 "Goals": st.column_config.NumberColumn("Goals", format="%d", width="small"),
+                **({"Yellow Cards": st.column_config.NumberColumn("Yellow", format="%d", width="small")} if "Yellow Cards" in players_summary.columns else {}),
+                **({"Red Cards": st.column_config.NumberColumn("Red", format="%d", width="small")} if "Red Cards" in players_summary.columns else {}),
             },
         )
     elif table_type == "records":
@@ -482,7 +585,7 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
             },
         )
 
-# ---------- NEW: Players Card View renderer ----------
+# ---------- Players Card View renderer ----------
 def render_player_cards(df: pd.DataFrame):
     """
     Renders players as responsive cards.
@@ -680,12 +783,6 @@ def main():
     )
     add_world_cup_watermark()
 
-    # 👉 Replace with your published sheet (xlsx) URL
-    GOOGLE_SHEETS_URL = (
-        "https://docs.google.com/spreadsheets/d/e/"
-        "2PACX-1vRpCD-Wh_NnGQjJ1Mh3tuU5Mdcl8TK41JopMUcSnfqww8wkPXKKgRyg7v4sC_vuUw/pub?output=xlsx"
-    )
-
     # Sidebar
     with st.sidebar:
         st.header("🎛️ Dashboard Controls")
@@ -700,7 +797,9 @@ def main():
 
         # Load data
         with st.spinner("📡 Loading tournament data…"):
-            tournament_data = fetch_tournament_data(GOOGLE_SHEETS_URL)
+            tournament_data = fetch_tournament_data(GOALS_SHEET_URL)
+            cards_df = fetch_cards_data(CARDS_SHEET_URL)
+            tournament_data = merge_cards(tournament_data, cards_df)
 
         if tournament_data.empty:
             notify("No tournament data available. Check the published sheet link/permissions.", "err")
@@ -788,9 +887,6 @@ def main():
         c4.metric("📊 Divisions", current_stats["divisions"])
         st.divider()
 
-        # Simple insight boxes
-        # (You can keep/extend the previous insight widgets if you like.)
-
     # TAB 3 — Teams
     with tab3:
         st.header("🏆 Teams Analysis")
@@ -818,7 +914,10 @@ def main():
     # TAB 4 — Players (CARD VIEW)
     with tab4:
         st.header("👤 Players (Card View)")
-        render_player_cards(tournament_data)  # <-- cards only (no table)
+        render_player_cards(tournament_data)  # cards only
+
+        with st.expander("📋 Show Players Ranking Table"):
+            create_enhanced_data_table(tournament_data, "players")  # includes Yellow/Red if present; blanks -> 0
 
     # TAB 5 — Analytics
     with tab5:
