@@ -763,7 +763,7 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
         st.dataframe(
             display_df,
             use_container_width=False,
-            width=900,
+            width=1000,
             hide_index=True,
             column_config={
                 "Player": st.column_config.TextColumn("Player", width="large"),
@@ -1377,5 +1377,6 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
         st.exception(e)
+
 
 
