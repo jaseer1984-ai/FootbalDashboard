@@ -552,22 +552,44 @@ def _inject_player_cards_css():
     """, unsafe_allow_html=True)
 
 def render_player_cards(df: pd.DataFrame):
-    """Responsive player cards with rank badge + bar scaled to top scorer."""
+    """Responsive player cards with rank + relative bars.
+    Always shows Appearances / Yellow / Red with 0 defaults."""
     if df.empty:
         st.info("📇 No players to show.")
         return
 
-    # Rank by total goals, then player name
+    # Aggregate per player (keep Team/Division) and coerce numeric fields if present
+    work = df.copy()
+    for col in ["Appearances", "Yellow Cards", "YellowCards", "Red Cards", "RedCards", "Goals"]:
+        if col in work.columns:
+            work[col] = pd.to_numeric(work[col], errors="coerce")
+
     players = (
-        df.groupby(["Player", "Team", "Division"], dropna=False)["Goals"]
-          .sum().reset_index()
-          .sort_values(["Goals", "Player"], ascending=[False, True])
-          .reset_index(drop=True)
+        work.groupby(["Player", "Team", "Division"], dropna=False)
+            .agg(
+                Goals=("Goals", "sum"),
+                Appearances=("Appearances", "sum"),
+                YellowCards=("Yellow Cards", "sum") if "Yellow Cards" in work.columns else ("YellowCards", "sum"),
+                RedCards=("Red Cards", "sum") if "Red Cards" in work.columns else ("RedCards", "sum"),
+            )
+            .reset_index()
     )
+
+    # Fill missing/NaN with zeros for the card rows to always show
+    for col in ["Goals", "Appearances", "YellowCards", "RedCards"]:
+        if col not in players.columns:
+            players[col] = 0
+        players[col] = players[col].fillna(0).astype(int)
+
+    # Ranking by goals desc then name
+    players = players.sort_values(["Goals", "Player"], ascending=[False, True]).reset_index(drop=True)
     players.insert(0, "Rank", players.index + 1)
 
-    max_goals = int(players["Goals"].max()) if not players.empty else 1
-    max_goals = max(max_goals, 1)
+    # Maxes for relative bars (avoid divide-by-zero)
+    max_goals = max(int(players["Goals"].max()), 1)
+    max_apps = max(int(players["Appearances"].max()), 1)
+    max_y = max(int(players["YellowCards"].max()), 1)
+    max_r = max(int(players["RedCards"].max()), 1)
 
     _inject_player_cards_css()
 
@@ -577,14 +599,16 @@ def render_player_cards(df: pd.DataFrame):
         name  = str(r.get("Player", "—")).strip() or "—"
         team  = str(r.get("Team", "—")).strip() or "—"
         div   = str(r.get("Division", "—")).strip() or "—"
-        goals = int(r.get("Goals", 0) or 0)
 
-        # Optional stats if ever added to data source:
-        appearances = r.get("Appearances", None)
-        yellow = r.get("Yellow Cards", r.get("YellowCards", None))
-        red    = r.get("Red Cards", r.get("RedCards", None))
+        goals = int(r["Goals"])
+        apps  = int(r["Appearances"])
+        yel   = int(r["YellowCards"])
+        red   = int(r["RedCards"])
 
-        pct = round((goals / max_goals) * 100, 2)
+        gpct = round(goals / max_goals * 100, 2)
+        apct = round(apps  / max_apps  * 100, 2) if max_apps else 0
+        ypct = round(yel   / max_y     * 100, 2) if max_y else 0
+        rpct = round(red   / max_r     * 100, 2) if max_r else 0
 
         html.append(f"""
         <div class="pcard">
@@ -597,30 +621,35 @@ def render_player_cards(df: pd.DataFrame):
 
           <div class="row">
             <div class="label">⚽ Goals</div>
-            <div class="dotbar"><span style="--pct:{pct}%"></span></div>
+            <div class="dotbar"><span style="--pct:{gpct}%"></span></div>
             <div class="num">{goals}</div>
           </div>
 
-          {f'''
-          <div class="row"><div class="label">👕 Appearances</div>
-          <div class="dotbar"><span style="--pct:{min(100,int(appearances)*10 if appearances else 0)}%"></span></div>
-          <div class="num">{int(appearances)}</div></div>''' if appearances is not None else ''}
+          <div class="row">
+            <div class="label">👕 Appearances</div>
+            <div class="dotbar"><span style="--pct:{apct}%"></span></div>
+            <div class="num">{apps}</div>
+          </div>
 
-          {f'''
-          <div class="row"><div class="label">🟨 Yellow Cards</div>
-          <div class="dotbar"><span style="--pct:{min(100,int(yellow)*25 if yellow else 0)}%"></span></div>
-          <div class="num">{int(yellow)}</div></div>''' if yellow is not None else ''}
+          <div class="row">
+            <div class="label">🟨 Yellow Cards</div>
+            <div class="dotbar"><span style="--pct:{ypct}%"></span></div>
+            <div class="num">{yel}</div>
+          </div>
 
-          {f'''
-          <div class="row"><div class="label">🟥 Red Cards</div>
-          <div class="dotbar"><span style="--pct:{min(100,int(red)*50 if red else 0)}%"></span></div>
-          <div class="num">{int(red)}</div></div>''' if red is not None else ''}
+          <div class="row">
+            <div class="label">🟥 Red Cards</div>
+            <div class="dotbar"><span style="--pct:{rpct}%"></span></div>
+            <div class="num">{red}</div>
+          </div>
 
           <div style="margin-top:.5rem"><span class="pill">No awards</span></div>
         </div>
         """)
+
     html.append("</div>")
     st.markdown("\n".join(html), unsafe_allow_html=True)
+
 
 # ====================== MAIN APP ==========================
 def main():
@@ -964,3 +993,4 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
         st.exception(e)
+
