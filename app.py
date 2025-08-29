@@ -1,4 +1,4 @@
-# ABEER BLUESTAR SOCCER FEST 2K25 — Streamlit Dashboard (Players = Card View)
+# ABEER BLUESTAR SOCCER FEST 2K25 — Streamlit Dashboard (Players = Card View + CARDS sheet)
 # Author: AI Assistant | Last updated: 2025-08-29
 
 from __future__ import annotations
@@ -144,15 +144,8 @@ def inject_advanced_css():
                     "labelFont": "Poppins",
                     "titleFont": "Poppins",
                 },
-                "legend": {
-                    "labelColor": "#64748b",
-                    "titleColor": "#374151",
-                    "labelFont": "Poppins",
-                    "titleFont": "Poppins",
-                },
-                "range": {
-                    "category": ["#0ea5e9","#34d399","#60a5fa","#f59e0b","#f87171","#a78bfa","#fb7185","#4ade80"]
-                },
+                "legend": {"labelColor": "#64748b", "titleColor": "#374151", "labelFont": "Poppins", "titleFont": "Poppins"},
+                "range": {"category": ["#0ea5e9","#34d399","#60a5fa","#f59e0b","#f87171","#a78bfa","#fb7185","#4ade80"]},
             }
         },
     )
@@ -175,11 +168,12 @@ def add_world_cup_watermark(image_url: str = "https://cdnjs.cloudflare.com/ajax/
         unsafe_allow_html=True,
     )
 
+# ====================== SIMPLE NOTIFY =============================
 def notify(msg: str, kind: str = "ok"):
     cls = {"ok": "status-ok", "warn": "status-warn", "err": "status-err"}.get(kind, "status-ok")
     st.markdown(f'<div class="status-pill {cls}">{msg}</div>', unsafe_allow_html=True)
 
-# ====================== DATA LOADING (no xlrd dependency) =========
+# ====================== XLSX HELPERS (no xlrd) ====================
 def parse_xlsx_without_dependencies(file_bytes: bytes) -> pd.DataFrame:
     ns = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     with zipfile.ZipFile(BytesIO(file_bytes)) as z:
@@ -224,7 +218,8 @@ def parse_xlsx_without_dependencies(file_bytes: bytes) -> pd.DataFrame:
     matrix = [[r.get(i) for i in range(max_col + 1)] for r in rows]
     return pd.DataFrame(matrix)
 
-def safe_read_excel(file_source) -> pd.DataFrame:
+def safe_read_excel(file_source, *, sheet_name=None, header=None):
+    """Try pandas; if fail and sheet_name is None (first sheet), fallback to manual parser."""
     if isinstance(file_source, (str, Path)):
         with open(file_source, "rb") as f:
             file_bytes = f.read()
@@ -234,13 +229,16 @@ def safe_read_excel(file_source) -> pd.DataFrame:
         file_bytes = file_source.read()
 
     try:
-        return pd.read_excel(BytesIO(file_bytes), header=None)
+        return pd.read_excel(BytesIO(file_bytes), sheet_name=sheet_name, header=header)
     except Exception:
-        return parse_xlsx_without_dependencies(file_bytes)
+        if sheet_name in (None, 0):
+            return parse_xlsx_without_dependencies(file_bytes)
+        # If we explicitly asked for another sheet and pandas failed, return empty
+        return pd.DataFrame()
 
 def find_division_columns(raw_df: pd.DataFrame):
     b_col, a_col = None, None
-    for row_idx in range(min(2, len(raw_df))):
+    for row_idx in range(min(3, len(raw_df))):
         row = raw_df.iloc[row_idx].astype(str).str.strip().str.lower()
         for col_idx, cell in row.items():
             if "b division" in cell and b_col is None:
@@ -252,8 +250,11 @@ def find_division_columns(raw_df: pd.DataFrame):
         a_col = 5 if raw_df.shape[1] >= 8 else (4 if raw_df.shape[1] >= 7 else None)
     return b_col, a_col
 
+# ====================== PROCESS GOALS (sheet 1) ===================
 def process_tournament_data(xlsx_bytes: bytes) -> pd.DataFrame:
-    raw_df = safe_read_excel(xlsx_bytes)
+    raw_df = safe_read_excel(xlsx_bytes, header=None)
+    if isinstance(raw_df, dict):  # if a dict of sheets somehow
+        raw_df = list(raw_df.values())[0]
     if raw_df.empty:
         return pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
 
@@ -266,10 +267,8 @@ def process_tournament_data(xlsx_bytes: bytes) -> pd.DataFrame:
     def extract_div(start_col: int | None, name: str):
         if start_col is None or start_col + 3 > raw_df.shape[1]:
             return
-        # First 3 columns: Team, Player, Goals (optional extra columns later)
-        df = raw_df.iloc[data_start_row:, start_col : start_col + 6].copy()  # read a few extra to be safe
+        df = raw_df.iloc[data_start_row:, start_col : start_col + 6].copy()
         df.columns = [f"C{i}" for i in range(df.shape[1])]
-        # Map to expected names
         df = df.rename(columns={"C0": "Team", "C1": "Player", "C2": "Goals",
                                 "C3": "Appearances", "C4": "Yellow Cards", "C5": "Red Cards"})
         df = df.dropna(subset=["Team", "Player", "Goals"], how="any")
@@ -293,16 +292,69 @@ def process_tournament_data(xlsx_bytes: bytes) -> pd.DataFrame:
             cols.append(opt)
     return out[cols]
 
+# ====================== PROCESS CARDS (sheet named 'CARDS') =======
+def process_cards_data(xlsx_bytes: bytes) -> pd.DataFrame:
+    """Parses the 'CARDS' sheet. Expected columns per division block: Team | Player Name | CARDS (YELLOW/RED)."""
+    cards_raw = safe_read_excel(xlsx_bytes, sheet_name="CARDS", header=None)
+    if isinstance(cards_raw, dict):
+        # If loaded with sheet_name=None mistakenly, try to pick 'CARDS'
+        cards_raw = cards_raw.get("CARDS", pd.DataFrame())
+    if cards_raw is None or cards_raw.empty:
+        return pd.DataFrame(columns=["Division", "Team", "Player", "Yellow Cards", "Red Cards"])
+
+    b_start, a_start = find_division_columns(cards_raw)
+    header_row = 1 if len(cards_raw) > 1 else 0
+    data_start_row = header_row + 1
+
+    records = []
+
+    def extract_cards(start_col: int | None, name: str):
+        if start_col is None or start_col + 3 > cards_raw.shape[1]:
+            return
+        df = cards_raw.iloc[data_start_row:, start_col : start_col + 3].copy()
+        df.columns = ["Team", "Player", "CARDS"]
+        df = df.dropna(subset=["Team", "Player"], how="any")
+        # Normalize card text
+        df["CARDS"] = df["CARDS"].astype(str).str.strip().str.upper()
+        df["Yellow Cards"] = (df["CARDS"] == "YELLOW").astype(int)
+        df["Red Cards"] = (df["CARDS"] == "RED").astype(int)
+        df["Division"] = name
+        # keep only needed cols
+        df = df[["Division", "Team", "Player", "Yellow Cards", "Red Cards"]]
+        records.extend(df.to_dict("records"))
+
+    extract_cards(b_start, "B Division")
+    extract_cards(a_start, "A Division")
+
+    if not records:
+        return pd.DataFrame(columns=["Division", "Team", "Player", "Yellow Cards", "Red Cards"])
+
+    cards_df = pd.DataFrame(records)
+    # Aggregate (a player may appear multiple times)
+    cards_df = (cards_df
+                .groupby(["Division", "Team", "Player"], as_index=False)
+                .agg(**{
+                    "Yellow Cards": ("Yellow Cards", "sum"),
+                    "Red Cards": ("Red Cards", "sum"),
+                }))
+    return cards_df
+
+# ====================== FETCH BOTH ================================
 @st.cache_data(ttl=300, show_spinner=False)
-def fetch_tournament_data(url: str) -> pd.DataFrame:
+def fetch_all_data(url: str):
+    """Returns (goals_df, cards_df). cards_df may be empty if sheet absent."""
     try:
         r = requests.get(url, timeout=30)
         r.raise_for_status()
-        if not r.content:
+        content = r.content
+        if not content:
             raise ValueError("Downloaded file is empty")
-        return process_tournament_data(r.content)
+        goals_df = process_tournament_data(content)
+        cards_df = process_cards_data(content)
+        return goals_df, cards_df
     except Exception:
-        return pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
+        return (pd.DataFrame(columns=["Division", "Team", "Player", "Goals"]),
+                pd.DataFrame(columns=["Division", "Team", "Player", "Yellow Cards", "Red Cards"]))
 
 # ====================== ANALYTICS HELPERS =========================
 def calculate_tournament_stats(df: pd.DataFrame) -> dict:
@@ -328,17 +380,11 @@ def get_top_performers(df: pd.DataFrame, top_n: int = 10) -> dict:
         return {"players": pd.DataFrame(), "teams": pd.DataFrame()}
     top_players = (
         df.groupby(["Player", "Team", "Division"])["Goals"]
-        .sum()
-        .reset_index()
-        .sort_values(["Goals", "Player"], ascending=[False, True])
-        .head(top_n)
+        .sum().reset_index().sort_values(["Goals", "Player"], ascending=[False, True]).head(top_n)
     )
     top_teams = (
         df.groupby(["Team", "Division"])["Goals"]
-        .sum()
-        .reset_index()
-        .sort_values("Goals", ascending=False)
-        .head(top_n)
+        .sum().reset_index().sort_values("Goals", ascending=False).head(top_n)
     )
     return {"players": top_players, "teams": top_teams}
 
@@ -349,8 +395,7 @@ def create_division_comparison(df: pd.DataFrame) -> pd.DataFrame:
         df.groupby("Division")
         .agg(Goals_sum=("Goals", "sum"), Goals_mean=("Goals", "mean"), Records=("Goals", "count"),
              Teams=("Team", "nunique"), Players=("Player", "nunique"))
-        .round(2)
-        .reset_index()
+        .round(2).reset_index()
         .rename(columns={"Goals_sum": "Total_Goals", "Goals_mean": "Avg_Goals", "Records": "Total_Records"})
     )
     total_goals = division_stats["Total_Goals"].sum()
@@ -482,7 +527,7 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
             },
         )
 
-# ---------- NEW: Players Card View renderer ----------
+# ---------- Players Card View renderer ----------
 def render_player_cards(df: pd.DataFrame):
     """
     Renders players as responsive cards.
@@ -493,13 +538,10 @@ def render_player_cards(df: pd.DataFrame):
         return
 
     work = df.copy()
-
-    # Optional numeric columns: cast if present
     for col in ["Appearances", "Yellow Cards", "Red Cards", "Goals"]:
         if col in work.columns:
             work[col] = pd.to_numeric(work[col], errors="coerce")
 
-    # Aggregate per player
     agg_map = {"Goals": ("Goals", "sum")}
     if "Appearances" in work.columns: agg_map["Appearances"] = ("Appearances", "sum")
     if "Yellow Cards" in work.columns: agg_map["YellowCards"] = ("Yellow Cards", "sum")
@@ -507,12 +549,9 @@ def render_player_cards(df: pd.DataFrame):
 
     players = (
         work.groupby(["Player", "Team", "Division"])
-            .agg(**agg_map)
-            .reset_index()
-            .fillna(0)
+            .agg(**agg_map).reset_index().fillna(0)
     )
 
-    # Rank by Goals (desc)
     players = players.sort_values(["Goals", "Player"], ascending=[False, True]).reset_index(drop=True)
     players.insert(0, "Rank", range(1, len(players) + 1))
 
@@ -521,7 +560,6 @@ def render_player_cards(df: pd.DataFrame):
     max_yel = int(players["YellowCards"].max()) if "YellowCards" in players.columns else 0
     max_red = int(players["RedCards"].max()) if "RedCards" in players.columns else 0
 
-    # Build HTML
     html = ['<div class="pcard-grid">']
     for _, row in players.iterrows():
         goals = int(row["Goals"])
@@ -573,13 +611,12 @@ def render_player_cards(df: pd.DataFrame):
             html.append('</div>')
 
         html.append('<div style="margin-top:.5rem"><span class="pill">No awards</span></div>')
-        html.append('</div>')  # .pcard
-    html.append('</div>')      # .pcard-grid
+        html.append('</div>')
+    html.append('</div>')
 
-    # IMPORTANT: render as HTML (not st.write)
     st.markdown("\n".join(html), unsafe_allow_html=True)
 
-# ====================== DOWNLOAD PACKAGE (unchanged) ==============
+# ====================== DOWNLOAD PACKAGE ==========================
 def create_comprehensive_zip_report(full_df: pd.DataFrame, filtered_df: pd.DataFrame) -> bytes:
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as z:
@@ -591,8 +628,7 @@ def create_comprehensive_zip_report(full_df: pd.DataFrame, filtered_df: pd.DataF
                 filtered_df.groupby(["Team", "Division"])
                 .agg(Unique_Players=("Player", "nunique"), Total_Records=("Goals", "count"),
                      Total_Goals=("Goals", "sum"), Avg_Goals=("Goals", "mean"), Max_Goals=("Goals", "max"))
-                .round(2)
-                .reset_index()
+                .round(2).reset_index()
             )
             z.writestr("03_teams_detailed_analysis.csv", teams.to_csv(index=False))
             players = filtered_df.groupby(["Player", "Team", "Division"])["Goals"].sum().reset_index()
@@ -668,7 +704,6 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
 def main():
     inject_advanced_css()
 
-    # Title
     st.markdown(
         """
 <div class="app-title">
@@ -698,25 +733,31 @@ def main():
         st.caption(f"🕒 Last refreshed: {last_refresh}")
         st.divider()
 
-        # Load data
+        # Load both sheets
         with st.spinner("📡 Loading tournament data…"):
-            tournament_data = fetch_tournament_data(GOOGLE_SHEETS_URL)
+            goals_df, cards_df = fetch_all_data(GOOGLE_SHEETS_URL)
 
-        if tournament_data.empty:
+        if goals_df.empty:
             notify("No tournament data available. Check the published sheet link/permissions.", "err")
             st.stop()
+
+        # Merge goals with cards (left join; missing cards -> 0)
+        tournament_data = goals_df.copy()
+        if not cards_df.empty:
+            tournament_data = tournament_data.merge(cards_df, on=["Division", "Team", "Player"], how="left")
+            for c in ["Yellow Cards", "Red Cards"]:
+                if c in tournament_data.columns:
+                    tournament_data[c] = tournament_data[c].fillna(0).astype(int)
 
         full_tournament_data = tournament_data.copy()
 
         st.header("🔍 Data Filters")
 
-        # Division filter
         division_options = ["All Divisions"] + sorted(tournament_data["Division"].unique().tolist())
         selected_division = st.selectbox("📊 Division", division_options, key="division_filter")
         if selected_division != "All Divisions":
             tournament_data = tournament_data[tournament_data["Division"] == selected_division]
 
-        # Team filter
         available_teams = sorted(tournament_data["Team"].unique().tolist())
         selected_teams = st.multiselect(
             "🏆 Teams (optional)",
@@ -728,7 +769,6 @@ def main():
         if selected_teams:
             tournament_data = tournament_data[tournament_data["Team"].isin(selected_teams)]
 
-        # Player search (type-to-search)
         st.subheader("👤 Player Search")
         player_names = sorted(tournament_data["Player"].dropna().astype(str).unique().tolist())
         selected_players = st.multiselect(
@@ -737,7 +777,6 @@ def main():
             default=[],
             key="players_filter",
             placeholder="Start typing a player name…",
-            help="You can select one or more players.",
         )
         if selected_players:
             tournament_data = tournament_data[tournament_data["Player"].isin(selected_players)]
@@ -778,7 +817,7 @@ def main():
                     ts["Display_Name"] = ts["Player"] + " (" + ts["Team"] + ")"
                     st.altair_chart(create_horizontal_bar_chart(ts, "Goals", "Display_Name", "Top 10 Players by Goals", "greens"), use_container_width=True)
 
-    # TAB 2 — Quick Insights
+    # TAB 2 — Quick Insights (you can extend later)
     with tab2:
         st.header("⚡ Quick Tournament Insights")
         c1, c2, c3, c4 = st.columns(4)
@@ -787,9 +826,6 @@ def main():
         c3.metric("🏆 Teams", current_stats["total_teams"])
         c4.metric("📊 Divisions", current_stats["divisions"])
         st.divider()
-
-        # Simple insight boxes
-        # (You can keep/extend the previous insight widgets if you like.)
 
     # TAB 3 — Teams
     with tab3:
@@ -818,7 +854,7 @@ def main():
     # TAB 4 — Players (CARD VIEW)
     with tab4:
         st.header("👤 Players (Card View)")
-        render_player_cards(tournament_data)  # <-- cards only (no table)
+        render_player_cards(tournament_data)
 
     # TAB 5 — Analytics
     with tab5:
