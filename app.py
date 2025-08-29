@@ -125,6 +125,9 @@ def inject_advanced_css():
             display:inline-block;
         }
 
+        /* Hide heading link icons */
+        h1 a, h2 a, h3 a, h4 a, h5 a, h6 a { display:none !important; }
+
         @media (max-width:768px){
             .block-container{ padding: 1rem .5rem; margin:.5rem; width:95vw; max-width:95vw; }
         }
@@ -421,6 +424,51 @@ def process_cards_sheet(sheet_df: pd.DataFrame) -> pd.DataFrame:
     out["Last Match"] = pd.to_numeric(out["Last Match"], errors="coerce").astype("Int64")
     return out
 
+def _norm_key(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(s).lower()) if s is not None else ""
+
+def _norm_div_key(s: str) -> str:
+    """Normalize any division-like label to 'adivision' or 'bdivision'."""
+    s2 = str(s).lower().replace("-", " ")
+    if "a" in s2 and "division" in s2:
+        return "adivision"
+    if "b" in s2 and "division" in s2:
+        return "bdivision"
+    return re.sub(r"[^a-z0-9]", "", s2)
+
+def canonicalize_names(df: pd.DataFrame) -> pd.DataFrame:
+    """Unify Team and Player names case-insensitively (use most frequent variant)."""
+    out = df.copy()
+
+    def canonize_column(col: str):
+        if col not in out.columns:
+            return
+        tmp = out.dropna(subset=[col]).copy()
+        if tmp.empty:
+            return
+        tmp["k"] = tmp[col].apply(_norm_key)
+        # Choose the variant that appears most; tie-break by alphabetical
+        pref = (
+            tmp.groupby(["k", col]).size().reset_index(name="n")
+               .sort_values(["k", "n", col], ascending=[True, False, True])
+               .drop_duplicates("k")
+        )
+        mapping = dict(zip(pref["k"], pref[col]))
+        out[col] = out[col].apply(lambda x: mapping.get(_norm_key(x), x) if pd.notna(x) else x)
+
+    canonize_column("Team")
+    canonize_column("Player")
+
+    # Add keys for convenience (used in merges)
+    if "Team" in out.columns:
+        out["TeamKey"] = out["Team"].apply(_norm_key)
+    if "Player" in out.columns:
+        out["PlayerKey"] = out["Player"].apply(_norm_key)
+    if "Division" in out.columns:
+        out["DivKey"] = out["Division"].apply(_norm_div_key)
+
+    return out
+
 def merge_goals_cards(goals: pd.DataFrame, cards: pd.DataFrame) -> pd.DataFrame:
     """Outer-merge so card-only players also appear (goals=0); keep last/action/events."""
     base = goals.copy() if goals is not None else pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
@@ -447,6 +495,9 @@ def merge_goals_cards(goals: pd.DataFrame, cards: pd.DataFrame) -> pd.DataFrame:
     if "Last Match" in merged.columns:
         merged["Last Match"] = pd.to_numeric(merged["Last Match"], errors="coerce").astype("Int64")
     merged["Goals"] = merged["Goals"].fillna(0).astype(int)
+
+    # 👉 unify Team/Player names (case-insensitive)
+    merged = canonicalize_names(merged)
     return merged
 
 def build_tournament_dataframe(xlsx_bytes: bytes) -> pd.DataFrame:
@@ -831,7 +882,7 @@ def create_comprehensive_zip_report(full_df: pd.DataFrame, filtered_df: pd.DataF
 
 def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
     st.subheader("📥 Download Reports")
-    st.caption("**Full** = all data ignoring filters, **Filtered** = current view with active filters")
+    # (Hidden) st.caption explanations removed
     col1, col2, col3 = st.columns(3)
 
     with col1:
@@ -887,18 +938,6 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
 
 # ====================== POINT TABLE (Google Sheets) ===============
 POINT_TABLE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRpCD-Wh_NnGQjJ1Mh3tuU5Mdcl8TK41JopMUcSnfqww8wkPXKKgRyg7v4sC_vuUw/pub?output=xlsx"
-
-def _norm_key(s: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", str(s).lower()) if s is not None else ""
-
-def _norm_div_key(s: str) -> str:
-    """Normalize any division-like label to 'adivision' or 'bdivision'."""
-    s2 = str(s).lower().replace("-", " ")
-    if "a" in s2 and "division" in s2:
-        return "adivision"
-    if "b" in s2 and "division" in s2:
-        return "bdivision"
-    return re.sub(r"[^a-z0-9]", "", s2)
 
 def _coerce_first_row_as_header(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
@@ -997,7 +1036,7 @@ def display_point_table(df: pd.DataFrame):
     if df is None or df.empty:
         st.info("No data found for this group yet.")
         return
-    # Show standard header labels
+    # Show standard header labels; ensure blanks for object NA
     show = df.copy()
     for c in show.select_dtypes(include="object").columns:
         show[c] = show[c].replace({None: ""}).fillna("")
@@ -1176,7 +1215,7 @@ def main():
         c6.metric("🟥 Red Cards", current_stats["total_red"])
         c7.metric("⚖️ Team Goals σ", current_stats["competitive_balance"])
         c8.metric("🎯 Avg Goals/Team", current_stats["avg_goals_per_team"])
-        st.caption("Card totals count each player's cards once. Filters on the left apply here too.")
+        # (Hidden) explanatory caption removed
         st.divider()
 
     # Helpers for PTS merge
@@ -1267,7 +1306,7 @@ def main():
     # TAB 6 — POINT TABLE (from Google Sheets)
     with tab6:
         st.header("📋 Point Table")
-        st.caption("Reading standings from your published Google Sheets (B-Division Group A, B-Division Group B, A-Division).")
+        # (Hidden) explanatory caption removed
         try:
             sections = fetch_point_tables(POINT_TABLE_URL)
             sub1, sub2, sub3 = st.tabs(["B-Division Group A", "B-Division Group B", "A-Division"])
