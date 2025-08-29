@@ -9,6 +9,7 @@
 # - Fixed Altair TitleParams (fontWeight)
 # - Title shows football emoji correctly
 # - Robust World Cup trophy watermark background
+# - Players tab now shows **card view** (Goals always; Appearances/Yellow/Red auto-appear when present)
 
 from __future__ import annotations
 
@@ -538,6 +539,180 @@ def create_goals_distribution_histogram(df: pd.DataFrame):
         .properties(title="Distribution of Goals per Player", height=400)
     )
 
+# ====================== UI HELPERS (Players Card View) =====================
+def _inject_player_cards_css():
+    st.markdown(
+        """
+        <style>
+          .players-grid{
+            display:grid;
+            grid-template-columns: repeat( auto-fill, minmax(280px,1fr) );
+            gap: 14px;
+          }
+          .pcard{
+            background:#fff;
+            border-radius:14px;
+            padding:14px;
+            box-shadow: 0 6px 20px rgba(2,6,23,0.06);
+            border: 1px solid #e5e7eb;
+          }
+          .pcard h3{
+            font-size:1.05rem; line-height:1.25; font-weight:700; color:#111827;
+            word-break: break-word;
+          }
+          .pcard .sub{ color:#0ea5e9; font-weight:600; margin-top:.15rem; }
+          .pcard .muted{ color:#6b7280; font-size:.9rem; margin-top:.15rem; }
+          .pcard .row{
+            display:grid;
+            grid-template-columns: 110px 1fr 38px;
+            align-items:center;
+            gap:10px;
+            margin-top:.55rem;
+          }
+          .pcard .label{ color:#374151; font-weight:600; white-space:nowrap; }
+          .pcard .dotbar{
+            position:relative; height:10px; background:#f1f5f9; border-radius:999px; overflow:hidden; border:1px solid #e5e7eb;
+          }
+          .pcard .dotbar > span{
+            --pct: 0%;
+            position:absolute; inset:0; width:var(--pct); background: linear-gradient(90deg,#0ea5e9,#60a5fa);
+          }
+          .pcard .num{ text-align:right; font-weight:700; color:#0f172a; }
+          .pcard .pill{
+            display:inline-flex; align-items:center; gap:.35rem;
+            background:#ecfeff; color:#155e75;
+            border:1px solid #a5f3fc;
+            padding:.2rem .5rem; border-radius:999px; font-size:.8rem; font-weight:700;
+          }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+def render_player_cards(df: pd.DataFrame):
+    """
+    Players as responsive cards.
+    - Always shows Goals row.
+    - Appearances/Yellow/Red rows are rendered ONLY if those columns exist in the data
+      (so your current sheet without them stays clean; when you add them later, they appear automatically).
+    """
+    if df.empty:
+        st.info("📇 No players to show.")
+        return
+
+    work = df.copy()
+
+    # Goals is required, others optional
+    if "Goals" not in work.columns:
+        work["Goals"] = 0
+    work["Goals"] = pd.to_numeric(work["Goals"], errors="coerce").fillna(0).astype(int)
+
+    # Optional fields: normalize if present
+    if "Appearances" in work.columns:
+        work["Appearances"] = pd.to_numeric(work["Appearances"], errors="coerce").fillna(0).astype(int)
+    if "Yellow Cards" in work.columns:
+        work["YellowCards"] = pd.to_numeric(work["Yellow Cards"], errors="coerce").fillna(0).astype(int)
+    elif "YellowCards" in work.columns:
+        work["YellowCards"] = pd.to_numeric(work["YellowCards"], errors="coerce").fillna(0).astype(int)
+    if "Red Cards" in work.columns:
+        work["RedCards"] = pd.to_numeric(work["Red Cards"], errors="coerce").fillna(0).astype(int)
+    elif "RedCards" in work.columns:
+        work["RedCards"] = pd.to_numeric(work["RedCards"], errors="coerce").fillna(0).astype(int)
+
+    # Build aggregation dict dynamically to avoid KeyError
+    agg_dict = {"Goals": ("Goals", "sum")}
+    if "Appearances" in work.columns: agg_dict["Appearances"] = ("Appearances", "sum")
+    if "YellowCards" in work.columns: agg_dict["YellowCards"] = ("YellowCards", "sum")
+    if "RedCards" in work.columns: agg_dict["RedCards"] = ("RedCards", "sum")
+
+    players = (
+        work.groupby(["Player", "Team", "Division"], dropna=False)
+            .agg(**agg_dict)
+            .reset_index()
+    )
+
+    # rank & max for relative bars
+    players = players.sort_values(["Goals", "Player"], ascending=[False, True]).reset_index(drop=True)
+    players.insert(0, "Rank", players.index + 1)
+
+    max_goals = max(int(players["Goals"].max()), 1)
+    max_apps = int(players["Appearances"].max()) if "Appearances" in players else 0
+    max_y = int(players["YellowCards"].max()) if "YellowCards" in players else 0
+    max_r = int(players["RedCards"].max()) if "RedCards" in players else 0
+
+    show_apps = "Appearances" in players
+    show_y = "YellowCards" in players
+    show_r = "RedCards" in players
+
+    _inject_player_cards_css()
+
+    html = ['<div class="players-grid">']
+    for _, r in players.iterrows():
+        rank = int(r["Rank"])
+        name = str(r.get("Player", "—")).strip() or "—"
+        team = str(r.get("Team", "—")).strip() or "—"
+        div  = str(r.get("Division", "—")).strip() or "—"
+
+        goals = int(r["Goals"])
+        gpct = round(goals / max_goals * 100, 2)
+
+        rows_html = [f"""
+          <div class="row">
+            <div class="label">⚽ Goals</div>
+            <div class="dotbar"><span style="--pct:{gpct}%"></span></div>
+            <div class="num">{goals}</div>
+          </div>
+        """]
+
+        if show_apps:
+            apps = int(r["Appearances"])
+            apct = round(apps / max(1, max_apps) * 100, 2)
+            rows_html.append(f"""
+              <div class="row">
+                <div class="label">👕 Appearances</div>
+                <div class="dotbar"><span style="--pct:{apct}%"></span></div>
+                <div class="num">{apps}</div>
+              </div>
+            """)
+
+        if show_y:
+            yel = int(r["YellowCards"])
+            ypct = round(yel / max(1, max_y) * 100, 2)
+            rows_html.append(f"""
+              <div class="row">
+                <div class="label">🟨 Yellow Cards</div>
+                <div class="dotbar"><span style="--pct:{ypct}%"></span></div>
+                <div class="num">{yel}</div>
+              </div>
+            """)
+
+        if show_r:
+            red = int(r["RedCards"])
+            rpct = round(red / max(1, max_r) * 100, 2)
+            rows_html.append(f"""
+              <div class="row">
+                <div class="label">🟥 Red Cards</div>
+                <div class="dotbar"><span style="--pct:{rpct}%"></span></div>
+                <div class="num">{red}</div>
+              </div>
+            """)
+
+        html.append(f"""
+        <div class="pcard">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
+            <h3 style="margin:0">{name}</h3>
+            <span class="pill" title="Rank">#{rank}</span>
+          </div>
+          <div class="sub">{team}</div>
+          <div class="muted">{div}</div>
+          {''.join(rows_html)}
+          <div style="margin-top:.5rem"><span class="pill">No awards</span></div>
+        </div>
+        """)
+
+    html.append("</div>")
+    st.markdown("\n".join(html), unsafe_allow_html=True)
+
 # ====================== UI COMPONENTS =============================
 def display_metric_cards(stats: dict):
     c1, c2, c3 = st.columns(3)
@@ -941,14 +1116,16 @@ def main():
             if not team_analysis.empty:
                 st.altair_chart(create_horizontal_bar_chart(team_analysis.head(15), "Goals", "Team", "Team Goals Distribution", "viridis"), use_container_width=True)
 
-    # TAB 4
+    # TAB 4 ——— CARD VIEW
     with tab4:
-        st.header("👤 Players Analysis")
+        st.header("👤 Players (Card View)")
         if tournament_data.empty:
             st.info("🔍 No players match your current filters.")
         else:
-            st.subheader("📋 Players Ranking")
-            create_enhanced_data_table(tournament_data, "players")
+            # Card grid
+            render_player_cards(tournament_data)
+
+            # Keep the quick stats on the right
             st.divider()
             c1, c2 = st.columns(2)
             with c1:
