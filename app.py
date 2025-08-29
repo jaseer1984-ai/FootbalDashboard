@@ -422,7 +422,7 @@ def process_cards_sheet(sheet_df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 def merge_goals_cards(goals: pd.DataFrame, cards: pd.DataFrame) -> pd.DataFrame:
-    """Outer-merge so card-only players also appear (goals=0); keep last/action/events)."""
+    """Outer-merge so card-only players also appear (goals=0); keep last/action/events."""
     base = goals.copy() if goals is not None else pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
     merged = (
         base.merge(cards, on=["Player","Team","Division"], how="outer", suffixes=("","_cards"))
@@ -440,7 +440,7 @@ def merge_goals_cards(goals: pd.DataFrame, cards: pd.DataFrame) -> pd.DataFrame:
             keep.append(opt)
     merged = merged[keep].copy()
 
-    # Clean text
+    # Clean text and avoid "None" strings
     for c in ["Division","Team","Player","Last Action","Card Events"]:
         if c in merged.columns:
             merged[c] = merged[c].apply(_norm_text)
@@ -661,19 +661,18 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
                 keep.append(opt)
         display_df = df[keep].copy()
 
-        # ---- Last Match: show "-" not None ----
+        # Make sure Last Match shows blank when missing, not "None"
         if "Last Match" in display_df.columns:
-            lm_num = pd.to_numeric(display_df["Last Match"], errors="coerce")
-            display_df["Last Match"] = lm_num.apply(lambda x: "-" if pd.isna(x) else f"{int(x)}")
+            display_df["Last Match"] = pd.to_numeric(display_df["Last Match"], errors="coerce").astype("Int64")
 
-        # Numeric coercions
+        # Coerce numeric columns and leave blanks for NA in object columns
         for c in ["Goals", "Appearances", "Yellow Cards", "Red Cards"]:
             if c in display_df.columns:
                 display_df[c] = pd.to_numeric(display_df[c], errors="coerce").fillna(0).astype(int)
 
-        # Remove None strings in object cols (leave blank)
+        # Remove literal "None"/"none"/"NaN" strings and None objects from object columns
         for c in display_df.select_dtypes(include="object").columns:
-            display_df[c] = display_df[c].replace({None: ""}).fillna("")
+            display_df[c] = display_df[c].replace({"None": "", "none": "", "NaN": "", "nan": "", None: ""}).fillna("")
 
         display_df = display_df.sort_values(["Goals", "Player"], ascending=[False, True]).reset_index(drop=True)
 
@@ -687,7 +686,7 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
                 **({"Appearances": st.column_config.NumberColumn("Appearances", format="%d", width="small")} if "Appearances" in display_df.columns else {}),
                 **({"Yellow Cards": st.column_config.NumberColumn("Yellow", format="%d", width="small")} if "Yellow Cards" in display_df.columns else {}),
                 **({"Red Cards": st.column_config.NumberColumn("Red", format="%d", width="small")} if "Red Cards" in display_df.columns else {}),
-                **({"Last Match": st.column_config.TextColumn("Last Match", width="small")} if "Last Match" in display_df.columns else {}),
+                **({"Last Match": st.column_config.NumberColumn("Last Match", format="%d", width="small")} if "Last Match" in display_df.columns else {}),
                 **({"Last Action": st.column_config.TextColumn("Last Action", width="large")} if "Last Action" in display_df.columns else {}),
                 **({"Card Events": st.column_config.TextColumn("Card Events", width="large")} if "Card Events" in display_df.columns else {}),
             },
@@ -988,10 +987,11 @@ def display_point_table(df: pd.DataFrame):
     if df is None or df.empty:
         st.info("No data found for this group yet.")
         return
-    # Ensure blank strings for any object NA
+    # Blank any stringy "None"/"NaN" values
     show = df.copy()
     for c in show.select_dtypes(include="object").columns:
-        show[c] = show[c].replace({None: ""}).fillna("")
+        show[c] = show[c].replace({"None": "", "none": "", "NaN": "", "nan": "", None: ""}).fillna("")
+    # Keep common order if present
     ordered = [c for c in ["Team","P","W","D","L","Pts","GF","GA","GD"] if c in show.columns]
     if ordered:
         show = show[ordered]
@@ -1100,7 +1100,7 @@ def main():
         if selected_players:
             tournament_data = tournament_data[tournament_data["Player"].isin(selected_players)]
 
-        # --- Cards filter (updated: no "Any card") ---
+        # --- Cards filter (affects all tabs) ---
         for c in ["Yellow Cards", "Red Cards"]:
             if c not in tournament_data.columns:
                 tournament_data[c] = 0
@@ -1108,7 +1108,7 @@ def main():
         st.subheader("🟨🟥 Cards filter")
         card_filter = st.selectbox(
             "Show players with…",
-            ["All", "Yellow only", "Red only"],   # ← removed "Any card"
+            ["All", "Yellow only", "Red only"],   # <-- removed “Any card”
             index=0,
             key="cards_filter",
             help="Filter to players who have cards recorded on the CARDS sheet.",
@@ -1177,36 +1177,7 @@ def main():
             st.info("🔍 No teams match your current filters.")
         else:
             st.subheader("📋 Teams Summary")
-
-            # Base summary
-            teams_summary = tournament_data.groupby(["Team", "Division"]).agg(
-                Players=("Player", "nunique"),
-                Total_Goals=("Goals", "sum")
-            ).reset_index()
-
-            # Join PTS from Point Table (A & B groups collapsed into divisions)
-            sections = fetch_point_tables(POINT_TABLE_URL)
-            pts_frames = []
-            label_to_div = {
-                "A-Division": "A Division",
-                "B-Division Group A": "B Division",
-                "B-Division Group B": "B Division",
-            }
-            for label, dfpts in sections.items():
-                if dfpts is None or dfpts.empty:
-                    continue
-                if "Team" in dfpts.columns and "Pts" in dfpts.columns:
-                    tmp = dfpts[["Team", "Pts"]].copy()
-                    tmp["Division"] = label_to_div.get(label, label)
-                    tmp["Team"] = tmp["Team"].astype(str).str.strip()
-                    pts_frames.append(tmp)
-            if pts_frames:
-                pts_all = pd.concat(pts_frames, ignore_index=True)
-                # If duplicates, keep max Pts
-                pts_all = pts_all.groupby(["Team", "Division"], as_index=False)["Pts"].max()
-                teams_summary = teams_summary.merge(pts_all, on=["Team", "Division"], how="left")
-                teams_summary["Pts"] = teams_summary["Pts"].fillna(0).astype(int)
-
+            teams_summary = tournament_data.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Total_Goals=("Goals", "sum")).reset_index()
             st.dataframe(
                 teams_summary.sort_values("Total_Goals", ascending=False),
                 use_container_width=True, hide_index=True,
@@ -1215,7 +1186,6 @@ def main():
                     "Division": st.column_config.TextColumn("Division", width="small"),
                     "Players": st.column_config.NumberColumn("Players", format="%d", width="small"),
                     "Total_Goals": st.column_config.NumberColumn("Total Goals", format="%d", width="small"),
-                    **({"Pts": st.column_config.NumberColumn("PTS", format="%d", width="small")} if "Pts" in teams_summary.columns else {}),
                 },
             )
             st.divider()
