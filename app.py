@@ -340,7 +340,7 @@ def process_goals_sheet(sheet_df: pd.DataFrame) -> pd.DataFrame:
 def process_cards_sheet(sheet_df: pd.DataFrame) -> pd.DataFrame:
     """
     Extract normalized card events from CARDS sheet (two blocks).
-    Expected columns per block: Team | Player Name | CARDS  (YELLOW/RED)
+    Expected columns per block: Team | Player Name | Card Type | Match# | Action
     """
     if sheet_df is None or sheet_df.empty:
         return pd.DataFrame(columns=["Division", "Team", "Player", "Yellow Cards", "Red Cards"])
@@ -356,7 +356,6 @@ def process_cards_sheet(sheet_df: pd.DataFrame) -> pd.DataFrame:
             return
         df = sheet_df.iloc[data_start_row:, start_col : start_col + 5].copy()
         df.columns = [f"C{i}" for i in range(df.shape[1])]
-        # Expected: Team | Player Name | Card Type | Match# | Action
         df = df.rename(columns={"C0": "Team", "C1": "Player", "C2": "Card Type", "C3": "Match#", "C4": "Action"})
         df["Team"] = df["Team"].apply(_norm_text)
         df["Player"] = df["Player"].apply(_norm_text)
@@ -376,7 +375,6 @@ def process_cards_sheet(sheet_df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=["Division", "Team", "Player", "Yellow Cards", "Red Cards"])
 
     cards = pd.DataFrame(events)
-    # Summaries per player for counts
     cards["Yellow Cards"] = (cards["Card Type"] == "YELLOW").astype(int)
     cards["Red Cards"] = (cards["Card Type"] == "RED").astype(int)
     counts = (
@@ -385,8 +383,6 @@ def process_cards_sheet(sheet_df: pd.DataFrame) -> pd.DataFrame:
         .astype({"Yellow Cards": int, "Red Cards": int})
     )
 
-    # Keep latest event info (by Match# if present, else last row order)
-    # We'll consider higher Match# as newer.
     cards["__order__"] = range(len(cards))
     cards_sorted = cards.sort_values(["Match#","__order__"], ascending=[True, True], na_position="first")
     latest = (
@@ -769,7 +765,6 @@ def render_player_cards(df: pd.DataFrame):
             html.append(f'<div class="num">{val}</div>')
             html.append('</div>')
 
-        # Show last match / action if present (from CARDS sheet)
         extra_bits = []
         if "LastCardType" in players.columns and pd.notna(row.get("LastCardType")):
             extra_bits.append(str(row.get("LastCardType")))
@@ -873,7 +868,7 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 mime="application/zip",
             )
 
-# ====================== POINT TABLE HELPERS =======================
+# ====================== POINT TABLE HELPERS (no openpyxl needed) ==
 def _norm_key(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", str(s).lower()) if s is not None else ""
 
@@ -882,7 +877,6 @@ def normalize_point_table(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
     df = df.copy()
-    # Build a rename map from fuzzy keys
     rename = {}
     for col in df.columns:
         key = _norm_key(col)
@@ -895,29 +889,45 @@ def normalize_point_table(df: pd.DataFrame) -> pd.DataFrame:
         elif key in ("ga","goalsagainst","goalsa","against"): rename[col] = "GA"
         elif key in ("gd","goaldifference","diff","difference"): rename[col] = "GD"
         elif key in ("pts","point","points"): rename[col] = "Pts"
-        # keep unknown columns as-is
     df = df.rename(columns=rename)
-
-    # Trim spaces in team names
     if "Team" in df.columns:
         df["Team"] = df["Team"].astype(str).str.strip()
-
-    # Coerce numeric columns
     for c in ["P","W","D","L","GF","GA","GD","Pts"]:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
-    # If GD missing but GF/GA exist, compute
     if "GD" not in df.columns and "GF" in df.columns and "GA" in df.columns:
         df["GD"] = df["GF"] - df["GA"]
-
-    # Sort if points present
     sort_cols = [c for c in ["Pts","GD","GF"] if c in df.columns]
     if sort_cols:
         df = df.sort_values(sort_cols, ascending=[False] + [False]*(len(sort_cols)-1), kind="mergesort")
-
-    # Drop all-empty columns
     df = df.dropna(axis=1, how="all")
     return df.reset_index(drop=True)
+
+def _coerce_first_row_as_header(df: pd.DataFrame) -> pd.DataFrame:
+    """Use the first non-empty row as header; good for XML-parsed sheets."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+    # drop wholly empty rows/cols
+    df = df.dropna(how="all").dropna(axis=1, how="all")
+    if df.empty:
+        return pd.DataFrame()
+    header_idx = 0
+    # find a header-like row (first few rows with >= 2 non-null cells)
+    for i in range(min(5, len(df))):
+        if df.iloc[i].notna().sum() >= 2:
+            header_idx = i
+            break
+    header = df.iloc[header_idx].astype(str).str.strip().tolist()
+    df2 = df.iloc[header_idx + 1 :].copy()
+    # ensure unique column names
+    cols = []
+    seen = {}
+    for c in header:
+        k = c if c not in seen else f"{c}_{seen[c]+1}"
+        seen[c] = seen.get(c, 0) + 1
+        cols.append(k)
+    df2.columns = cols
+    return df2.reset_index(drop=True)
 
 def split_point_table_by_sheetnames(xls: pd.ExcelFile) -> dict:
     """Map workbook sheets to our three groups by their names; fallback to order."""
@@ -930,13 +940,11 @@ def split_point_table_by_sheetnames(xls: pd.ExcelFile) -> dict:
                 return xls.sheet_names[i]
         return None
 
-    # Try smart matching
     s_a = pick(["b","group","a"])
     s_b = pick(["b","group","b"])
     s_adiv = pick(["a","division"])
 
-    # Fallbacks
-    order = xls.sheet_names + [None, None, None]  # pad
+    order = xls.sheet_names + [None, None, None]
     buckets["B-Division Group A"] = s_a or order[0]
     buckets["B-Division Group B"] = s_b or order[1]
     buckets["A-Division"]         = s_adiv or order[2]
@@ -950,14 +958,52 @@ def split_point_table_by_sheetnames(xls: pd.ExcelFile) -> dict:
             out[label] = normalize_point_table(df)
     return out
 
+def split_point_table_from_dict(sheets: dict[str, pd.DataFrame]) -> dict:
+    """Same mapping as above but for XML-parsed dict {name:df} (no openpyxl)."""
+    names = list(sheets.keys())
+    names_lower = [n.lower() for n in names]
+
+    def pick(match_terms):
+        for i, nm in enumerate(names_lower):
+            if all(term in nm for term in match_terms):
+                return names[i]
+        return None
+
+    s_a = pick(["b","group","a"]) or (names[0] if len(names) > 0 else None)
+    s_b = pick(["b","group","b"]) or (names[1] if len(names) > 1 else None)
+    s_adiv = pick(["a","division"]) or (names[2] if len(names) > 2 else None)
+
+    mapping = {
+        "B-Division Group A": s_a,
+        "B-Division Group B": s_b,
+        "A-Division": s_adiv,
+    }
+    out = {}
+    for label, nm in mapping.items():
+        if nm is None or sheets.get(nm) is None or sheets.get(nm).empty:
+            out[label] = pd.DataFrame()
+        else:
+            df = _coerce_first_row_as_header(sheets[nm])
+            out[label] = normalize_point_table(df)
+    return out
+
+def read_point_table_sections(file_bytes: bytes) -> dict:
+    """Read an uploaded .xlsx for point tables; works with or without openpyxl."""
+    # Try pandas (openpyxl) path first
+    try:
+        xls = pd.ExcelFile(BytesIO(file_bytes))
+        return split_point_table_by_sheetnames(xls)
+    except Exception:
+        # Fallback: pure XML parser
+        sheets = parse_xlsx_sheets(file_bytes)  # headerless
+        # Coerce headers and normalize
+        return split_point_table_from_dict(sheets)
+
 def display_point_table(df: pd.DataFrame):
     if df is None or df.empty:
         st.info("No data found for this group yet.")
         return
-    # Configure nice columns if present
-    col_cfg = {
-        "Team": st.column_config.TextColumn("Team", width="large"),
-    }
+    col_cfg = {"Team": st.column_config.TextColumn("Team", width="large")}
     for c in ["P","W","D","L","GF","GA","GD","Pts"]:
         if c in df.columns:
             col_cfg[c] = st.column_config.NumberColumn(c, format="%d", width="small")
@@ -1173,15 +1219,15 @@ def main():
                 scatter = create_advanced_scatter_plot(tournament_data)
                 (st.plotly_chart if PLOTLY_AVAILABLE else st.altair_chart)(scatter, use_container_width=True)
 
-    # TAB 6 — POINT TABLE (manual upload)
+    # TAB 6 — POINT TABLE (manual upload; works without openpyxl)
     with tab6:
         st.header("📋 Point Table")
-        st.caption("Upload the Excel file for standings. Sheets can be named like **'B Group A'**, **'B Group B'**, **'A Division'**, etc. I’ll auto-map them.")
+        st.caption("Upload the Excel file for standings. Sheets can be named like **'B Group A'**, **'B Group B'**, **'A Division'**. Auto-mapping will try names, else first three sheets.")
         uploaded = st.file_uploader("Upload Point Table (.xlsx)", type=["xlsx"], accept_multiple_files=False)
         if uploaded is not None:
             try:
-                xls = pd.ExcelFile(uploaded)
-                sections = split_point_table_by_sheetnames(xls)
+                file_bytes = uploaded.read()
+                sections = read_point_table_sections(file_bytes)  # <- no openpyxl required
                 sub1, sub2, sub3 = st.tabs(["B-Division Group A", "B-Division Group B", "A-Division"])
                 with sub1:
                     display_point_table(sections.get("B-Division Group A"))
