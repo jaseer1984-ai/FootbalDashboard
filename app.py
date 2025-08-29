@@ -1,10 +1,14 @@
 # ABEER BLUESTAR SOCCER FEST 2K25 — Complete Streamlit Dashboard
-# Author: AI Assistant | Updated: 2025-08-29
-# What's new in this build:
-# - Player cards view instead of table in Players tab
-# - Yellow and Red cards functionality added
-# - Enhanced player profile cards with full statistics
-# - Improved data processing to handle card statistics
+# Author: AI Assistant | Updated: 2025-08-28
+# What’s new in this build:
+# - Tabs bar is STICKY (frozen) — content scrolls beneath it
+# - Sidebar toggle kept visible
+# - Removed "Minimum goals per player" quick filter
+# - Player Search is a type-to-search multiselect
+# - Removed every "avg goals per player" display
+# - Fixed Altair TitleParams (fontWeight)
+# - Title shows football emoji correctly
+# - Robust World Cup trophy watermark background
 
 from __future__ import annotations
 
@@ -141,15 +145,6 @@ def inject_advanced_css():
             transition: transform .2s ease;
         }
         .metric-container:hover { transform: translateY(-3px); }
-
-        /* Player cards hover effect */
-        .player-card {
-            transition: all 0.3s ease;
-        }
-        .player-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 30px rgba(0,0,0,0.12) !important;
-        }
 
         /* Sidebar status pill */
         .status-pill { padding:.5rem .75rem; border-radius:.6rem; font-size:.85rem; margin-top:.5rem; }
@@ -299,7 +294,7 @@ def safe_read_excel(file_source) -> pd.DataFrame:
 
 def find_division_columns(raw_df: pd.DataFrame):
     b_col, a_col = None, None
-    for row_idx in range(min(3, len(raw_df))):
+    for row_idx in range(min(2, len(raw_df))):
         row = raw_df.iloc[row_idx].astype(str).str.strip().str.lower()
         for col_idx, cell in row.items():
             if "b division" in cell and b_col is None:
@@ -308,13 +303,13 @@ def find_division_columns(raw_df: pd.DataFrame):
                 a_col = col_idx
     if b_col is None and a_col is None:
         b_col = 0
-        a_col = 6 if raw_df.shape[1] >= 12 else (5 if raw_df.shape[1] >= 10 else None)
+        a_col = 5 if raw_df.shape[1] >= 8 else (4 if raw_df.shape[1] >= 7 else None)
     return b_col, a_col
 
 def process_tournament_data(xlsx_bytes: bytes) -> pd.DataFrame:
     raw_df = safe_read_excel(xlsx_bytes)
     if raw_df.empty:
-        return pd.DataFrame(columns=["Division", "Team", "Player", "Goals", "Yellow_Cards", "Red_Cards", "Appearances"])
+        return pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
 
     b_start, a_start = find_division_columns(raw_df)
     header_row = 1 if len(raw_df) > 1 else 0
@@ -323,44 +318,14 @@ def process_tournament_data(xlsx_bytes: bytes) -> pd.DataFrame:
     processed = []
 
     def extract_div(start_col: int | None, name: str):
-        if start_col is None:
+        if start_col is None or start_col + 2 >= raw_df.shape[1]:
             return
-        
-        # Determine how many columns we have for this division
-        # Expected format: Team | Player | Goals | Yellow Cards | Red Cards | Appearances
-        cols_needed = 6
-        if start_col + cols_needed > raw_df.shape[1]:
-            # Fallback to minimal columns if not enough data
-            cols_needed = min(3, raw_df.shape[1] - start_col)
-        
-        df = raw_df.iloc[data_start_row:, start_col:start_col + cols_needed].copy()
-        
-        # Set column names based on available columns
-        if cols_needed >= 6:
-            df.columns = ["Team", "Player", "Goals", "Yellow_Cards", "Red_Cards", "Appearances"]
-        elif cols_needed >= 3:
-            df.columns = ["Team", "Player", "Goals"] + [f"Extra_{i}" for i in range(cols_needed - 3)]
-            # Fill missing columns with defaults
-            if "Yellow_Cards" not in df.columns:
-                df["Yellow_Cards"] = 0
-            if "Red_Cards" not in df.columns:
-                df["Red_Cards"] = 0
-            if "Appearances" not in df.columns:
-                df["Appearances"] = 1  # Default to 1 appearance if they have goals
-        else:
-            return
-        
-        # Clean the data
+        df = raw_df.iloc[data_start_row:, start_col:start_col + 3].copy()
+        df.columns = ["Team", "Player", "Goals"]
         df = df.dropna(subset=["Team", "Player", "Goals"])
         df["Goals"] = pd.to_numeric(df["Goals"], errors="coerce")
         df = df.dropna(subset=["Goals"])
         df["Goals"] = df["Goals"].astype(int)
-        
-        # Process card data
-        for card_col in ["Yellow_Cards", "Red_Cards", "Appearances"]:
-            if card_col in df.columns:
-                df[card_col] = pd.to_numeric(df[card_col], errors="coerce").fillna(0).astype(int)
-        
         df["Division"] = name
         processed.extend(df.to_dict("records"))
 
@@ -368,10 +333,9 @@ def process_tournament_data(xlsx_bytes: bytes) -> pd.DataFrame:
     extract_div(a_start, "A Division")
 
     if not processed:
-        return pd.DataFrame(columns=["Division", "Team", "Player", "Goals", "Yellow_Cards", "Red_Cards", "Appearances"])
-    
+        return pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
     out = pd.DataFrame(processed)
-    return out[["Division", "Team", "Player", "Goals", "Yellow_Cards", "Red_Cards", "Appearances"]]
+    return out[["Division", "Team", "Player", "Goals"]]
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_tournament_data(url: str) -> pd.DataFrame:
@@ -382,7 +346,7 @@ def fetch_tournament_data(url: str) -> pd.DataFrame:
             raise ValueError("Downloaded file is empty")
         return process_tournament_data(r.content)
     except Exception:
-        return pd.DataFrame(columns=["Division", "Team", "Player", "Goals", "Yellow_Cards", "Red_Cards", "Appearances"])
+        return pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
 
 # ====================== ANALYTICS FUNCTIONS =======================
 def calculate_tournament_stats(df: pd.DataFrame) -> dict:
@@ -395,18 +359,9 @@ def calculate_tournament_stats(df: pd.DataFrame) -> dict:
             "avg_goals_per_team": 0,
             "top_scorer_goals": 0,
             "competitive_balance": 0,
-            "total_yellow_cards": 0,
-            "total_red_cards": 0,
-            "total_appearances": 0,
         }
 
-    player_totals = df.groupby(["Player", "Team", "Division"]).agg({
-        "Goals": "sum",
-        "Yellow_Cards": "sum",
-        "Red_Cards": "sum",
-        "Appearances": "sum"
-    }).reset_index()
-    
+    player_totals = df.groupby(["Player", "Team", "Division"])["Goals"].sum().reset_index()
     team_totals = df.groupby(["Team", "Division"])["Goals"].sum().reset_index()
 
     return {
@@ -417,27 +372,18 @@ def calculate_tournament_stats(df: pd.DataFrame) -> dict:
         "avg_goals_per_team": round(df["Goals"].sum() / max(1, len(team_totals)), 2),
         "top_scorer_goals": int(player_totals["Goals"].max()) if not player_totals.empty else 0,
         "competitive_balance": round(team_totals["Goals"].std(), 2) if len(team_totals) > 1 else 0,
-        "total_yellow_cards": int(df["Yellow_Cards"].sum()) if "Yellow_Cards" in df.columns else 0,
-        "total_red_cards": int(df["Red_Cards"].sum()) if "Red_Cards" in df.columns else 0,
-        "total_appearances": int(df["Appearances"].sum()) if "Appearances" in df.columns else 0,
     }
 
 def get_top_performers(df: pd.DataFrame, top_n: int = 10) -> dict:
     if df.empty:
         return {"players": pd.DataFrame(), "teams": pd.DataFrame()}
-    
-    # Aggregate player stats
     top_players = (
-        df.groupby(["Player", "Team", "Division"]).agg({
-            "Goals": "sum",
-            "Yellow_Cards": "sum",
-            "Red_Cards": "sum", 
-            "Appearances": "sum"
-        }).reset_index()
+        df.groupby(["Player", "Team", "Division"])["Goals"]
+        .sum()
+        .reset_index()
         .sort_values(["Goals", "Player"], ascending=[False, True])
         .head(top_n)
     )
-    
     top_teams = (
         df.groupby(["Team", "Division"])["Goals"]
         .sum()
@@ -450,199 +396,17 @@ def get_top_performers(df: pd.DataFrame, top_n: int = 10) -> dict:
 def create_division_comparison(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
-    
-    agg_dict = {
-        "Goals": "sum",
-        "Goals_mean": ("Goals", "mean"),
-        "Records": ("Goals", "count"),
-        "Teams": ("Team", "nunique"),
-        "Players": ("Player", "nunique"),
-    }
-    
-    # Add card columns if they exist
-    if "Yellow_Cards" in df.columns:
-        agg_dict["Yellow_Cards"] = ("Yellow_Cards", "sum")
-    if "Red_Cards" in df.columns:
-        agg_dict["Red_Cards"] = ("Red_Cards", "sum")
-    if "Appearances" in df.columns:
-        agg_dict["Appearances"] = ("Appearances", "sum")
-    
     division_stats = (
         df.groupby("Division")
-        .agg(agg_dict)
+        .agg(Goals_sum=("Goals", "sum"), Goals_mean=("Goals", "mean"), Records=("Goals", "count"),
+             Teams=("Team", "nunique"), Players=("Player", "nunique"))
         .round(2)
         .reset_index()
+        .rename(columns={"Goals_sum": "Total_Goals", "Goals_mean": "Avg_Goals", "Records": "Total_Records"})
     )
-    
-    # Rename columns
-    base_cols = ["Division", "Total_Goals", "Avg_Goals", "Total_Records", "Teams", "Players"]
-    extra_cols = [f"Total_{col}" for col in ["Yellow_Cards", "Red_Cards", "Appearances"] if col in df.columns]
-    division_stats.columns = base_cols + extra_cols
-    
     total_goals = division_stats["Total_Goals"].sum()
     division_stats["Goal_Share_Pct"] = (division_stats["Total_Goals"] / total_goals * 100).round(1) if total_goals else 0
     return division_stats
-
-# ====================== PLAYER CARD FUNCTIONS =====================
-def create_player_profile_cards(df: pd.DataFrame):
-    """Create individual player profile cards similar to the screenshot"""
-    if df.empty:
-        st.info("🔍 No players match your current filters.")
-        return
-    
-    # Get player summary data
-    player_stats = df.groupby(["Player", "Team", "Division"]).agg({
-        "Goals": "sum",
-        "Yellow_Cards": "sum",
-        "Red_Cards": "sum",
-        "Appearances": "sum"
-    }).reset_index()
-    
-    player_stats = player_stats.sort_values(["Goals", "Player"], ascending=[False, True])
-    
-    # Create cards in a responsive grid layout
-    cols_per_row = 4
-    
-    # Add some spacing and a container
-    st.markdown('<div style="margin: 1rem 0;">', unsafe_allow_html=True)
-    
-    # Process players in batches for grid layout
-    for i in range(0, len(player_stats), cols_per_row):
-        cols = st.columns(cols_per_row)
-        batch = player_stats.iloc[i:i + cols_per_row]
-        
-        for j, (_, player) in enumerate(batch.iterrows()):
-            if j < len(cols):
-                with cols[j]:
-                    create_single_player_card(player)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-
-def create_single_player_card(player):
-    """Create a single player profile card"""
-    # Determine division color
-    division_color = "#0ea5e9" if player["Division"] == "B Division" else "#f59e0b"
-    division_bg = "14, 165, 233" if player["Division"] == "B Division" else "245, 158, 11"
-    
-    # Get stats
-    goals = int(player["Goals"])
-    yellow_cards = int(player["Yellow_Cards"])
-    red_cards = int(player["Red_Cards"])
-    appearances = int(player["Appearances"])
-    
-    # Simple award logic
-    awards = []
-    if goals >= 5:
-        awards.append("🥇 Top Scorer")
-    elif goals >= 3:
-        awards.append("⚽ Goal Machine")
-    elif goals >= 1:
-        awards.append("🎯 Scorer")
-    
-    if red_cards == 0 and yellow_cards <= 1:
-        awards.append("🏅 Fair Play")
-    
-    if red_cards == 0 and yellow_cards == 0:
-        awards.append("✨ Clean Record")
-    
-    award_text = " • ".join(awards) if awards else "No awards"
-    
-    # Create the card
-    st.markdown(
-        f"""
-        <div class="player-card" style="
-            background: white;
-            border-radius: 15px;
-            padding: 1.5rem;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            border-top: 4px solid {division_color};
-            margin-bottom: 1rem;
-            height: 320px;
-            display: flex;
-            flex-direction: column;
-        ">
-            <!-- Player Name -->
-            <div style="
-                font-size: 1.1rem;
-                font-weight: 700;
-                color: #1e293b;
-                margin-bottom: 0.5rem;
-                text-align: center;
-                line-height: 1.3;
-                min-height: 2.6rem;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            ">{player["Player"]}</div>
-            
-            <!-- Team and Division -->
-            <div style="
-                color: white;
-                font-size: 0.85rem;
-                text-align: center;
-                margin-bottom: 1.2rem;
-                padding: 0.4rem 0.75rem;
-                background: rgba({division_bg}, 0.9);
-                border-radius: 20px;
-                font-weight: 500;
-            ">{player["Team"]} • {player["Division"]}</div>
-            
-            <!-- Main Goals Display -->
-            <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
-                <div style="text-align: center; margin: 1rem 0;">
-                    <div style="font-size: 2.2rem; font-weight: 700; color: {division_color}; margin-bottom: 0.25rem;">
-                        ⚽ {goals}
-                    </div>
-                    <div style="color: #64748b; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.8rem;">
-                        Goal{"s" if goals != 1 else ""}
-                    </div>
-                </div>
-                
-                <!-- Statistics Grid -->
-                <div style="
-                    display: grid;
-                    grid-template-columns: 1fr 1fr 1fr;
-                    gap: 0.75rem;
-                    margin-top: 1rem;
-                    padding-top: 1rem;
-                    border-top: 1px solid #e2e8f0;
-                ">
-                    <div style="text-align: center;">
-                        <div style="font-size: 1.1rem; margin-bottom: 0.25rem;">📈</div>
-                        <div style="font-size: 0.7rem; color: #64748b; margin-bottom: 0.25rem;">Appearances</div>
-                        <div style="font-size: 0.95rem; font-weight: 600; color: #374151;">{appearances}</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="font-size: 1.1rem; margin-bottom: 0.25rem;">🟨</div>
-                        <div style="font-size: 0.7rem; color: #64748b; margin-bottom: 0.25rem;">Yellow Cards</div>
-                        <div style="font-size: 0.95rem; font-weight: 600; color: #374151;">{yellow_cards}</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="font-size: 1.1rem; margin-bottom: 0.25rem;">🟥</div>
-                        <div style="font-size: 0.7rem; color: #64748b; margin-bottom: 0.25rem;">Red Cards</div>
-                        <div style="font-size: 0.95rem; font-weight: 600; color: #374151;">{red_cards}</div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Awards Section -->
-            <div style="
-                text-align: center;
-                margin-top: 1rem;
-                padding-top: 0.75rem;
-                border-top: 1px solid #e2e8f0;
-                color: #64748b;
-                font-size: 0.75rem;
-                line-height: 1.3;
-                min-height: 2rem;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            ">{award_text}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 # ====================== VISUALIZATION FUNCTIONS ===================
 def create_horizontal_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title: str, color_scheme: str = "blues") -> alt.Chart:
@@ -774,44 +538,6 @@ def create_goals_distribution_histogram(df: pd.DataFrame):
         .properties(title="Distribution of Goals per Player", height=400)
     )
 
-def create_cards_analysis_chart(df: pd.DataFrame):
-    """Create visualization for yellow and red cards analysis"""
-    if df.empty or ("Yellow_Cards" not in df.columns and "Red_Cards" not in df.columns):
-        return alt.Chart(pd.DataFrame({"note": ["No card data available"]})).mark_text().encode(text="note:N")
-    
-    # Aggregate cards by team
-    team_cards = df.groupby(["Team", "Division"]).agg({
-        "Yellow_Cards": "sum",
-        "Red_Cards": "sum"
-    }).reset_index()
-    
-    # Reshape for visualization
-    card_data = []
-    for _, row in team_cards.iterrows():
-        card_data.extend([
-            {"Team": row["Team"], "Division": row["Division"], "Card_Type": "Yellow", "Count": row["Yellow_Cards"]},
-            {"Team": row["Team"], "Division": row["Division"], "Card_Type": "Red", "Count": row["Red_Cards"]}
-        ])
-    
-    card_df = pd.DataFrame(card_data)
-    
-    return (
-        alt.Chart(card_df)
-        .mark_bar(opacity=0.85)
-        .encode(
-            x=alt.X("Count:Q", title="Number of Cards"),
-            y=alt.Y("Team:N", sort="-x", title="Team"),
-            color=alt.Color("Card_Type:N", 
-                          scale=alt.Scale(domain=["Yellow", "Red"], range=["#fbbf24", "#ef4444"]),
-                          title="Card Type"),
-            tooltip=["Team:N", "Division:N", "Card_Type:N", "Count:Q"]
-        )
-        .properties(
-            title="Disciplinary Records by Team",
-            height=max(300, min(500, len(team_cards) * 20))
-        )
-    )
-
 # ====================== UI COMPONENTS =============================
 def display_metric_cards(stats: dict):
     c1, c2, c3 = st.columns(3)
@@ -819,18 +545,9 @@ def display_metric_cards(stats: dict):
     c2.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_players']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">PLAYERS</div></div>""", unsafe_allow_html=True)
     c3.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_teams']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">TEAMS</div></div>""", unsafe_allow_html=True)
 
-def display_enhanced_metric_cards(stats: dict):
-    """Enhanced metrics including cards data"""
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_goals']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">TOTAL GOALS</div></div>""", unsafe_allow_html=True)
-    c2.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_players']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">PLAYERS</div></div>""", unsafe_allow_html=True)
-    c3.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_teams']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">TEAMS</div></div>""", unsafe_allow_html=True)
-    c4.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#fbbf24;margin-bottom:.5rem;">{stats['total_yellow_cards']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">YELLOW CARDS</div></div>""", unsafe_allow_html=True)
-    c5.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#ef4444;margin-bottom:.5rem;">{stats['total_red_cards']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">RED CARDS</div></div>""", unsafe_allow_html=True)
-
 def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
     if df.empty:
-        st.info("No data available for insights.")
+        st.info("📊 No data available for insights.")
         return
 
     stats = calculate_tournament_stats(df)
@@ -897,18 +614,16 @@ def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
         goals_1 = int((player_goals == 1).sum())
         goals_2_plus = int((player_goals >= 2).sum())
 
-        # Add disciplinary insight
-        total_yellow = stats.get("total_yellow_cards", 0)
-        total_red = stats.get("total_red_cards", 0)
-        discipline_text = f"{total_yellow} yellow, {total_red} red cards issued"
-
         st.markdown(
             f"""
         <div style="background:white;padding:1.5rem;border-radius:15px;box-shadow:0 4px 20px rgba(0,0,0,.05);border-left:4px solid #a78bfa;margin-bottom:1rem;">
-            <div style="font-weight:600;color:#a78bfa;margin-bottom:.5rem;font-size:1.1rem;">📊 Tournament Discipline</div>
+            <div style="font-weight:600;color:#a78bfa;margin-bottom:.5rem;font-size:1.1rem;">📊 Competition Balance</div>
             <div style="color:#374151;line-height:1.5;">
                 <strong>{goals_1} players</strong> scored 1 goal, <strong>{goals_2_plus} players</strong> scored 2+ goals<br>
-                <strong>Fair play:</strong> {discipline_text}
+                {
+                    "Well-balanced competition" if stats['competitive_balance'] < 2
+                    else ("Some teams dominating" if stats['competitive_balance'] > 4 else "Moderate competition spread")
+                }
             </div>
         </div>
         """,
@@ -917,41 +632,25 @@ def display_insights_cards(df: pd.DataFrame, scope: str = "Tournament"):
 
 def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "records"):
     if df.empty:
-        st.info(f"No {table_type} data available with current filters.")
+        st.info(f"📋 No {table_type} data available with current filters.")
         return
 
     if table_type == "records":
         display_df = df.sort_values("Goals", ascending=False).reset_index(drop=True)
-        column_config = {
-            "Division": st.column_config.TextColumn("Division", width="small"),
-            "Team": st.column_config.TextColumn("Team", width="medium"),
-            "Player": st.column_config.TextColumn("Player", width="large"),
-            "Goals": st.column_config.NumberColumn("Goals", format="%d", width="small"),
-        }
-        
-        # Add card columns if they exist
-        if "Yellow_Cards" in display_df.columns:
-            column_config["Yellow_Cards"] = st.column_config.NumberColumn("🟨", format="%d", width="small")
-        if "Red_Cards" in display_df.columns:
-            column_config["Red_Cards"] = st.column_config.NumberColumn("🟥", format="%d", width="small")
-        if "Appearances" in display_df.columns:
-            column_config["Appearances"] = st.column_config.NumberColumn("📈", format="%d", width="small")
-            
         st.dataframe(
             display_df,
             use_container_width=True,
             hide_index=True,
-            column_config=column_config,
+            column_config={
+                "Division": st.column_config.TextColumn("Division", width="small"),
+                "Team": st.column_config.TextColumn("Team", width="medium"),
+                "Player": st.column_config.TextColumn("Player", width="large"),
+                "Goals": st.column_config.NumberColumn("Goals", format="%d", width="small"),
+            },
         )
 
     elif table_type == "teams":
-        teams_summary = df.groupby(["Team", "Division"]).agg({
-            "Players": ("Player", "nunique"),
-            "Total_Goals": ("Goals", "sum"),
-            "Yellow_Cards": ("Yellow_Cards", "sum"),
-            "Red_Cards": ("Red_Cards", "sum")
-        }).reset_index()
-        
+        teams_summary = df.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Total_Goals=("Goals", "sum")).reset_index()
         top_rows = []
         for team in teams_summary["Team"].unique():
             team_data = df[df["Team"] == team]
@@ -971,10 +670,25 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "records"):
                 "Team": st.column_config.TextColumn("Team", width="medium"),
                 "Players": st.column_config.NumberColumn("Players", format="%d", width="small"),
                 "Total_Goals": st.column_config.NumberColumn("Total Goals", format="%d", width="small"),
-                "Yellow_Cards": st.column_config.NumberColumn("🟨 Cards", format="%d", width="small"),
-                "Red_Cards": st.column_config.NumberColumn("🟥 Cards", format="%d", width="small"),
                 "Top_Scorer": st.column_config.TextColumn("Top Scorer", width="large"),
                 "Top_Scorer_Goals": st.column_config.NumberColumn("Goals", format="%d", width="small"),
+            },
+        )
+
+    elif table_type == "players":
+        players_summary = df.groupby(["Player", "Team", "Division"])["Goals"].sum().reset_index()
+        players_summary = players_summary.sort_values(["Goals", "Player"], ascending=[False, True])
+        players_summary.insert(0, "Rank", range(1, len(players_summary) + 1))
+        st.dataframe(
+            players_summary,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Rank": st.column_config.NumberColumn("Rank", format="%d", width="small"),
+                "Player": st.column_config.TextColumn("Player", width="large"),
+                "Team": st.column_config.TextColumn("Team", width="medium"),
+                "Division": st.column_config.TextColumn("Division", width="small"),
+                "Goals": st.column_config.NumberColumn("Goals", format="%d", width="small"),
             },
         )
 
@@ -985,41 +699,18 @@ def create_comprehensive_zip_report(full_df: pd.DataFrame, filtered_df: pd.DataF
             z.writestr("01_full_tournament_data.csv", full_df.to_csv(index=False))
         if not filtered_df.empty:
             z.writestr("02_filtered_tournament_data.csv", filtered_df.to_csv(index=False))
-            
-            # Enhanced team analysis with card data
-            team_agg = {
-                "Unique_Players": ("Player", "nunique"),
-                "Total_Records": ("Goals", "count"),
-                "Total_Goals": ("Goals", "sum"),
-                "Avg_Goals": ("Goals", "mean"),
-                "Max_Goals": ("Goals", "max")
-            }
-            if "Yellow_Cards" in filtered_df.columns:
-                team_agg["Total_Yellow_Cards"] = ("Yellow_Cards", "sum")
-            if "Red_Cards" in filtered_df.columns:
-                team_agg["Total_Red_Cards"] = ("Red_Cards", "sum")
-            if "Appearances" in filtered_df.columns:
-                team_agg["Total_Appearances"] = ("Appearances", "sum")
-                
             teams = (
                 filtered_df.groupby(["Team", "Division"])
-                .agg(team_agg)
+                .agg(Unique_Players=("Player", "nunique"), Total_Records=("Goals", "count"), Total_Goals=("Goals", "sum"),
+                     Avg_Goals=("Goals", "mean"), Max_Goals=("Goals", "max"))
                 .round(2)
                 .reset_index()
             )
             z.writestr("03_teams_detailed_analysis.csv", teams.to_csv(index=False))
-            
-            # Enhanced player ranking
-            players = filtered_df.groupby(["Player", "Team", "Division"]).agg({
-                "Goals": "sum",
-                "Yellow_Cards": "sum",
-                "Red_Cards": "sum",
-                "Appearances": "sum"
-            }).reset_index()
+            players = filtered_df.groupby(["Player", "Team", "Division"])["Goals"].sum().reset_index()
             players = players.sort_values(["Goals", "Player"], ascending=[False, True])
             players.insert(0, "Rank", range(1, len(players) + 1))
             z.writestr("04_players_ranking.csv", players.to_csv(index=False))
-            
             div_cmp = create_division_comparison(filtered_df)
             if not div_cmp.empty:
                 z.writestr("05_division_comparison.csv", div_cmp.to_csv(index=False))
@@ -1056,17 +747,9 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
     with col2:
         st.subheader("🏆 Summary Reports")
         if not filtered_df.empty:
-            # Enhanced teams summary with card data
-            team_agg = {"Players_Count": ("Player", "nunique"), "Total_Goals": ("Goals", "sum")}
-            if "Yellow_Cards" in filtered_df.columns:
-                team_agg["Yellow_Cards"] = ("Yellow_Cards", "sum")
-            if "Red_Cards" in filtered_df.columns:
-                team_agg["Red_Cards"] = ("Red_Cards", "sum")
-                
             teams_summary = (
-                filtered_df.groupby(["Team", "Division"]).agg(team_agg).reset_index()
+                filtered_df.groupby(["Team", "Division"]).agg(Players_Count=("Player", "nunique"), Total_Goals=("Goals", "sum")).reset_index()
             ).sort_values("Total_Goals", ascending=False)
-            
             st.download_button(
                 label="⬇️ Download TEAMS Summary (CSV)",
                 data=teams_summary.to_csv(index=False),
@@ -1075,13 +758,7 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 help="Download team performance summary",
             )
 
-            # Enhanced players summary
-            players_summary = filtered_df.groupby(["Player", "Team", "Division"]).agg({
-                "Goals": "sum",
-                "Yellow_Cards": "sum",
-                "Red_Cards": "sum",
-                "Appearances": "sum"
-            }).reset_index()
+            players_summary = filtered_df.groupby(["Player", "Team", "Division"])["Goals"].sum().reset_index()
             players_summary = players_summary.sort_values(["Goals", "Player"], ascending=[False, True])
             players_summary.insert(0, "Rank", range(1, len(players_summary) + 1))
             st.download_button(
@@ -1186,13 +863,162 @@ def main():
         )
         if selected_players:
             tournament_data = tournament_data[tournament_data["Player"].isin(selected_players)]
-            
-        # Card filters
-        st.subheader("📋 Disciplinary Filters")
-        yellow_card_filter = st.checkbox("Show only players with yellow cards", key="yellow_filter")
-        red_card_filter = st.checkbox("Show only players with red cards", key="red_filter")
-        
-        if yellow_card_filter and "Yellow_Cards" in tournament_data.columns:
-            tournament_data = tournament_data[tournament_data["Yellow_Cards"] > 0]
-        if red_card_filter and "Red_Cards" in tournament_data.columns:
-            tournament
+
+    # Tabs (this first tabs block is sticky via CSS above)
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+        ["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📥 DOWNLOADS"]
+    )
+
+    current_stats = calculate_tournament_stats(tournament_data)
+    top_performers = get_top_performers(tournament_data, 10)
+
+    # TAB 1
+    with tab1:
+        st.header("📊 Tournament Overview")
+        display_metric_cards(current_stats)
+        st.divider()
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.subheader("🎯 Goal Scoring Records")
+            create_enhanced_data_table(tournament_data, "records")
+        with col2:
+            if not tournament_data.empty:
+                st.subheader("🏁 Division Distribution")
+                st.altair_chart(create_division_donut_chart(tournament_data), use_container_width=True)
+        if not tournament_data.empty:
+            c1, c2 = st.columns(2)
+            with c1:
+                st.subheader("🏆 Goals by Team")
+                team_goals = tournament_data.groupby("Team")["Goals"].sum().reset_index().sort_values("Goals", ascending=False).head(10)
+                if not team_goals.empty:
+                    st.altair_chart(create_horizontal_bar_chart(team_goals, "Goals", "Team", "Top 10 Teams by Goals", "blues"), use_container_width=True)
+            with c2:
+                st.subheader("⚽ Top Scorers")
+                if not top_performers["players"].empty:
+                    ts = top_performers["players"].head(10).copy()
+                    ts["Display_Name"] = ts["Player"] + " (" + ts["Team"] + ")"
+                    st.altair_chart(create_horizontal_bar_chart(ts, "Goals", "Display_Name", "Top 10 Players by Goals", "greens"), use_container_width=True)
+
+    # TAB 2
+    with tab2:
+        st.header("⚡ Quick Tournament Insights")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("🎯 Total Goals", current_stats["total_goals"])
+        c2.metric("👥 Active Players", current_stats["total_players"])
+        c3.metric("🏆 Teams", current_stats["total_teams"])
+        c4.metric("📊 Divisions", current_stats["divisions"])
+        st.divider()
+        display_insights_cards(tournament_data, "Current View" if len(tournament_data) < len(full_tournament_data) else "Tournament")
+        if tournament_data["Division"].nunique() > 1:
+            st.subheader("🔄 Division Comparison")
+            division_comparison = create_division_comparison(tournament_data)
+            if not division_comparison.empty:
+                st.dataframe(
+                    division_comparison,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Total_Goals": st.column_config.NumberColumn("Total Goals", format="%d"),
+                        "Avg_Goals": st.column_config.NumberColumn("Avg Goals", format="%.2f"),
+                        "Total_Records": st.column_config.NumberColumn("Records", format="%d"),
+                        "Teams": st.column_config.NumberColumn("Teams", format="%d"),
+                        "Players": st.column_config.NumberColumn("Players", format="%d"),
+                        "Goal_Share_Pct": st.column_config.NumberColumn("Share %", format="%.1f%%"),
+                    },
+                )
+
+    # TAB 3
+    with tab3:
+        st.header("🏆 Teams Analysis")
+        if tournament_data.empty:
+            st.info("🔍 No teams match your current filters.")
+        else:
+            st.subheader("📋 Teams Summary")
+            create_enhanced_data_table(tournament_data, "teams")
+            st.divider()
+            st.subheader("📊 Team Performance Analysis")
+            team_analysis = tournament_data.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Goals=("Goals", "sum")).reset_index().sort_values("Goals", ascending=False)
+            if not team_analysis.empty:
+                st.altair_chart(create_horizontal_bar_chart(team_analysis.head(15), "Goals", "Team", "Team Goals Distribution", "viridis"), use_container_width=True)
+
+    # TAB 4
+    with tab4:
+        st.header("👤 Players Analysis")
+        if tournament_data.empty:
+            st.info("🔍 No players match your current filters.")
+        else:
+            st.subheader("📋 Players Ranking")
+            create_enhanced_data_table(tournament_data, "players")
+            st.divider()
+            c1, c2 = st.columns(2)
+            with c1:
+                st.subheader("🥇 Top Scorers by Division")
+                for division in tournament_data["Division"].unique():
+                    div_data = tournament_data[tournament_data["Division"] == division]
+                    div_top = div_data.groupby(["Player", "Team"])["Goals"].sum().reset_index().sort_values("Goals", ascending=False).head(5)
+                    st.write(f"**{division}**")
+                    if not div_top.empty:
+                        for _, row in div_top.iterrows():
+                            st.write(f"• {row['Player']} ({row['Team']}) — {int(row['Goals'])} goals")
+                    else:
+                        st.write("• No players found")
+                    st.write("")
+            with c2:
+                st.subheader("📊 Player Statistics")
+                player_goals = tournament_data.groupby(["Player", "Team"])["Goals"].sum()
+                st.metric("🎯 Highest Individual Score", int(player_goals.max()) if not player_goals.empty else 0)
+                st.metric("👥 Players with 2+ Goals", int((player_goals >= 2).sum()))
+                st.metric("⚽ Single Goal Scorers", int((player_goals == 1).sum()))
+
+    # TAB 5
+    with tab5:
+        st.header("📈 Advanced Analytics")
+        if tournament_data.empty:
+            st.info("🔍 No data available for analytics with current filters.")
+        else:
+            c1, c2 = st.columns(2)
+            with c1:
+                st.subheader("📊 Goals Distribution")
+                dist = create_goals_distribution_histogram(tournament_data)
+                (st.plotly_chart if PLOTLY_AVAILABLE else st.altair_chart)(dist, use_container_width=True)
+            with c2:
+                st.subheader("🎯 Team Performance Matrix")
+                scatter = create_advanced_scatter_plot(tournament_data)
+                (st.plotly_chart if PLOTLY_AVAILABLE else st.altair_chart)(scatter, use_container_width=True)
+            st.divider()
+            st.subheader("🔍 Detailed Performance Metrics")
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.markdown("**🏆 Top Teams (Total Goals)**")
+                tg = tournament_data.groupby("Team")["Goals"].sum().sort_values(ascending=False).head(5)
+                for team, g in tg.items():
+                    st.write(f"• **{team}**: {int(g)} goals")
+            with c2:
+                st.markdown("**⚽ Scoring Patterns**")
+                counts = tournament_data["Goals"].value_counts().sort_index()
+                for g, c in counts.items():
+                    pct = (c / len(tournament_data) * 100)
+                    st.write(f"• **{int(g)} goal{'s' if g != 1 else ''}**: {int(c)} records ({pct:.1f}%)")
+            with c3:
+                st.markdown("**🎯 Division Insights**")
+                for division in tournament_data["Division"].unique():
+                    div_data = tournament_data[tournament_data["Division"] == division]
+                    total_goals = int(div_data["Goals"].sum())
+                    unique_players = int(div_data["Player"].nunique())
+                    st.write(f"• **{division}**:")
+                    st.write(f"  - {total_goals} total goals")
+                    st.write(f"  - {unique_players} unique players")
+
+    # TAB 6
+    with tab6:
+        create_download_section(full_tournament_data, tournament_data)
+
+# ====================== ENTRY POINT ===============================
+if __name__ == "__main__":
+    if "last_refresh" not in st.session_state:
+        st.session_state["last_refresh"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        main()
+    except Exception as e:
+        st.error(f"🚨 Application Error: {e}")
+        st.exception(e)
