@@ -1,4 +1,4 @@
-# ABEER BLUESTAR SOCCER FEST 2K25 — Streamlit Dashboard (Players Card View + CARDS v2 + Point Table from Google Sheets)
+# ABEER BLUESTAR SOCCER FEST 2K25 — Streamlit Dashboard (Players Card View + CARDS v2 + POINT TABLE from Google Sheets)
 # Author: AI Assistant | Last updated: 2025-08-29
 
 from __future__ import annotations
@@ -342,14 +342,14 @@ def process_goals_sheet(sheet_df: pd.DataFrame) -> pd.DataFrame:
         out[c] = out[c].apply(_norm_text)
     return out
 
-# --------- CARDS sheet (Team | Player Name | Card Type | Match# | Action) ----------
+# --------- CARDS sheet (Team | Player | Card Type | Match# | Action) ----------
 def process_cards_sheet(sheet_df: pd.DataFrame) -> pd.DataFrame:
     """
     Extract normalized card events from CARDS sheet (two blocks).
     Returns per-player aggregated counts + latest match/action + event summary.
     """
     if sheet_df is None or sheet_df.empty:
-        return pd.DataFrame(columns=["Division","Team","Player","Yellow Cards","Red Cards","Last_Match","Last_Action","Card_Events"])
+        return pd.DataFrame(columns=["Division","Team","Player","Yellow Cards","Red Cards","Last Match","Last Action","Card Events"])
 
     b_start, a_start = find_division_columns(sheet_df)
     header_row = 1 if len(sheet_df) > 1 else 0
@@ -363,20 +363,16 @@ def process_cards_sheet(sheet_df: pd.DataFrame) -> pd.DataFrame:
         df = sheet_df.iloc[data_start_row:, start_col : start_col + 5].copy()
         df.columns = [f"C{i}" for i in range(df.shape[1])]
         df = df.rename(columns={"C0": "Team", "C1": "Player", "C2": "Card_Type", "C3": "Match", "C4": "Action"})
-        # Clean
         df["Team"] = df["Team"].apply(_norm_text)
         df["Player"] = df["Player"].apply(_norm_text)
         df["Card_Type"] = df["Card_Type"].apply(lambda x: (_norm_text(x) or "").upper())
         df["Action"] = df["Action"].apply(_norm_text)
         df["Match"] = pd.to_numeric(df["Match"], errors="coerce").astype("Int64")
-
         df = df.dropna(subset=["Team", "Player", "Card_Type"])
         if df.empty:
             return
-
         df["Division"] = division_name
 
-        # For readable event chips
         def make_evt(row):
             m = int(row["Match"]) if pd.notna(row["Match"]) else None
             ct = row["Card_Type"].title() if row["Card_Type"] else "Card"
@@ -391,12 +387,12 @@ def process_cards_sheet(sheet_df: pd.DataFrame) -> pd.DataFrame:
     extract_block(a_start, "A Division")
 
     if not rows:
-        return pd.DataFrame(columns=["Division","Team","Player","Yellow Cards","Red Cards","Last_Match","Last_Action","Card_Events"])
+        return pd.DataFrame(columns=["Division","Team","Player","Yellow Cards","Red Cards","Last Match","Last Action","Card Events"])
 
     events = pd.concat(rows, ignore_index=True)
+
     keys = ["Player","Team","Division"]
 
-    # Counts
     counts = (
         events.assign(Yellow=(events["Card_Type"]=="YELLOW").astype(int),
                       Red=(events["Card_Type"]=="RED").astype(int))
@@ -404,27 +400,25 @@ def process_cards_sheet(sheet_df: pd.DataFrame) -> pd.DataFrame:
               .rename(columns={"Yellow":"Yellow Cards","Red":"Red Cards"})
     )
 
-    # Last match / action (by match number then order)
     last = (
         events.sort_values(keys+["Match"])
               .groupby(keys, as_index=False)
               .tail(1)[keys+["Match","Action"]]
-              .rename(columns={"Match":"Last_Match","Action":"Last_Action"})
+              .rename(columns={"Match":"Last Match","Action":"Last Action"})
     )
 
-    # Event summary (sorted by match)
     evsum = (
         events.sort_values(keys+["Match"])
               .groupby(keys)["Event"]
               .apply(lambda s: " • ".join([str(x) for x in s if _norm_text(x)]))
               .reset_index()
-              .rename(columns={"Event":"Card_Events"})
+              .rename(columns={"Event":"Card Events"})
     )
 
     out = counts.merge(last, on=keys, how="left").merge(evsum, on=keys, how="left")
     out["Yellow Cards"] = out["Yellow Cards"].astype(int)
     out["Red Cards"] = out["Red Cards"].astype(int)
-    out["Last_Match"] = pd.to_numeric(out["Last_Match"], errors="coerce").astype("Int64")
+    out["Last Match"] = pd.to_numeric(out["Last Match"], errors="coerce").astype("Int64")
     return out
 
 def merge_goals_cards(goals: pd.DataFrame, cards: pd.DataFrame) -> pd.DataFrame:
@@ -440,18 +434,18 @@ def merge_goals_cards(goals: pd.DataFrame, cards: pd.DataFrame) -> pd.DataFrame:
         if col in merged.columns:
             merged[col] = pd.to_numeric(merged[col], errors="coerce").fillna(0).astype(int)
 
-    # Keep text/meta
     keep = ["Division","Team","Player","Goals"]
-    for opt in ["Appearances","Yellow Cards","Red Cards","Last_Match","Last_Action","Card_Events"]:
+    for opt in ["Appearances","Yellow Cards","Red Cards","Last Match","Last Action","Card Events"]:
         if opt in merged.columns:
             keep.append(opt)
     merged = merged[keep].copy()
 
-    # Clean text
-    for c in ["Division","Team","Player","Last_Action","Card_Events"]:
+    # Clean text and avoid "None" strings
+    for c in ["Division","Team","Player","Last Action","Card Events"]:
         if c in merged.columns:
             merged[c] = merged[c].apply(_norm_text)
-
+    if "Last Match" in merged.columns:
+        merged["Last Match"] = pd.to_numeric(merged["Last Match"], errors="coerce").astype("Int64")
     merged["Goals"] = merged["Goals"].fillna(0).astype(int)
     return merged
 
@@ -476,134 +470,163 @@ def build_tournament_dataframe(xlsx_bytes: bytes) -> pd.DataFrame:
     return merge_goals_cards(goals, cards)
 
 @st.cache_data(ttl=300, show_spinner=False)
-def fetch_workbook_bytes(url: str) -> bytes:
-    """Download the full workbook as bytes (Google Sheets XLSX export)."""
-    r = requests.get(url, timeout=30)
-    r.raise_for_status()
-    return r.content
-
-@st.cache_data(ttl=300, show_spinner=False)
 def fetch_tournament_data(url: str) -> pd.DataFrame:
     try:
-        file_bytes = fetch_workbook_bytes(url)
-        if not file_bytes:
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        if not r.content:
             raise ValueError("Downloaded file is empty")
-        return build_tournament_dataframe(file_bytes)
+        return build_tournament_dataframe(r.content)
     except Exception:
         return pd.DataFrame(columns=["Division", "Team", "Player", "Goals"])
 
-# ====================== POINT TABLE HELPERS =======================
-def _norm_key(s: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", str(s).lower()) if s is not None else ""
+# ====================== ANALYTICS HELPERS =========================
+def calculate_tournament_stats(df: pd.DataFrame) -> dict:
+    if df.empty:
+        return {
+            "total_goals": 0, "total_players": 0, "total_teams": 0, "divisions": 0,
+            "avg_goals_per_team": 0, "top_scorer_goals": 0, "competitive_balance": 0,
+            "total_yellow": 0, "total_red": 0,
+        }
+    player_totals = df.groupby(["Player", "Team", "Division"])["Goals"].sum().reset_index()
+    team_totals = df.groupby(["Team", "Division"])["Goals"].sum().reset_index()
 
-def _coerce_first_row_as_header(df: pd.DataFrame) -> pd.DataFrame:
-    """Use the first non-empty row as header; good for XML-parsed sheets."""
-    if df is None or df.empty:
-        return pd.DataFrame()
-    df = df.dropna(how="all").dropna(axis=1, how="all")
+    dedup = df.drop_duplicates(subset=["Player","Team","Division"]).copy()
+    total_yellow = int(dedup["Yellow Cards"].fillna(0).astype(int).sum()) if "Yellow Cards" in dedup.columns else 0
+    total_red    = int(dedup["Red Cards"].fillna(0).astype(int).sum()) if "Red Cards" in dedup.columns else 0
+
+    return {
+        "total_goals": int(df["Goals"].sum()),
+        "total_players": len(player_totals),
+        "total_teams": len(team_totals),
+        "divisions": df["Division"].nunique(),
+        "avg_goals_per_team": round(df["Goals"].sum() / max(1, len(team_totals)), 2),
+        "top_scorer_goals": int(player_totals["Goals"].max()) if not player_totals.empty else 0,
+        "competitive_balance": round(team_totals["Goals"].std(), 2) if len(team_totals) > 1 else 0,
+        "total_yellow": total_yellow,
+        "total_red": total_red,
+    }
+
+def get_top_performers(df: pd.DataFrame, top_n: int = 10) -> dict:
+    if df.empty:
+        return {"players": pd.DataFrame(), "teams": pd.DataFrame()}
+    top_players = (
+        df.groupby(["Player", "Team", "Division"])["Goals"]
+        .sum()
+        .reset_index()
+        .sort_values(["Goals", "Player"], ascending=[False, True])
+        .head(top_n)
+    )
+    top_teams = (
+        df.groupby(["Team", "Division"])["Goals"]
+        .sum()
+        .reset_index()
+        .sort_values("Goals", ascending=False)
+        .head(top_n)
+    )
+    return {"players": top_players, "teams": top_teams}
+
+def create_division_comparison(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
-    header_idx = 0
-    for i in range(min(5, len(df))):
-        if df.iloc[i].notna().sum() >= 2:
-            header_idx = i
-            break
-    header = df.iloc[header_idx].astype(str).str.strip().tolist()
-    df2 = df.iloc[header_idx + 1 :].copy()
-    # unique columns
-    cols, seen = [], {}
-    for c in header:
-        k = c if c not in seen else f"{c}_{seen[c]+1}"
-        seen[c] = seen.get(c, 0) + 1
-        cols.append(k)
-    df2.columns = cols
-    return df2.reset_index(drop=True)
+    division_stats = (
+        df.groupby("Division")
+        .agg(Goals_sum=("Goals", "sum"), Goals_mean=("Goals", "mean"), Records=("Goals", "count"),
+             Teams=("Team", "nunique"), Players=("Player", "nunique"))
+        .round(2)
+        .reset_index()
+        .rename(columns={"Goals_sum": "Total_Goals", "Goals_mean": "Avg_Goals", "Records": "Total_Records"})
+    )
+    total_goals = division_stats["Total_Goals"].sum()
+    division_stats["Goal_Share_Pct"] = (division_stats["Total_Goals"] / total_goals * 100).round(1) if total_goals else 0
+    return division_stats
 
-def normalize_point_table(df: pd.DataFrame) -> pd.DataFrame:
-    """Rename common column variants to TEAM, M, W, D, L, PTS, GF, GA, GD and coerce numerics."""
-    if df is None or df.empty:
-        return pd.DataFrame()
-    df = df.copy()
-    # If came from headerless parse, try making first row header:
-    if not any(_norm_key(c) in ("team","teams","club","clubs") for c in df.columns):
-        df = _coerce_first_row_as_header(df)
+# ====================== CHART HELPERS =============================
+def create_horizontal_bar_chart(df: pd.DataFrame, x_col: str, y_col: str, title: str, color_scheme: str = "blues") -> alt.Chart:
+    if df.empty:
+        return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
+    max_val = int(df[x_col].max()) if not df.empty else 1
+    tick_values = list(range(0, max_val + 1)) if max_val <= 50 else None
+    return (
+        alt.Chart(df)
+        .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6, opacity=0.85, stroke="white", strokeWidth=1)
+        .encode(
+            x=alt.X(f"{x_col}:Q", title="Goals", axis=alt.Axis(format="d", tickMinStep=1, values=tick_values, gridOpacity=0.3), scale=alt.Scale(domainMin=0, nice=False)),
+            y=alt.Y(f"{y_col}:N", sort="-x", title=None, axis=alt.Axis(labelLimit=200)),
+            color=alt.Color(f"{x_col}:Q", scale=alt.Scale(scheme=color_scheme), legend=None),
+            tooltip=[alt.Tooltip(f"{y_col}:N", title=y_col), alt.Tooltip(f"{x_col}:Q", title="Goals", format="d")],
+        )
+        .properties(height=max(300, min(600, len(df) * 25)), title=alt.TitleParams(text=title, fontSize=16, anchor="start", fontWeight=600))
+        .resolve_scale(color="independent")
+    )
 
-    rename = {}
-    for col in df.columns:
-        key = _norm_key(col)
-        if key in ("team","teams","club","clubs"): rename[col] = "TEAM"
-        elif key in ("m","p","mp","matchesplayed","played"): rename[col] = "M"
-        elif key in ("w","win","wins"): rename[col] = "W"
-        elif key in ("d","draw","draws"): rename[col] = "D"
-        elif key in ("l","loss","losses"): rename[col] = "L"
-        elif key in ("gf","goalsfor","goalsf","for"): rename[col] = "GF"
-        elif key in ("ga","goalsagainst","goalsa","against"): rename[col] = "GA"
-        elif key in ("gd","goaldifference","diff","difference"): rename[col] = "GD"
-        elif key in ("pts","point","points"): rename[col] = "PTS"
-    df = df.rename(columns=rename)
+def create_division_donut_chart(df: pd.DataFrame) -> alt.Chart:
+    if df.empty:
+        return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
+    division_data = df.groupby("Division")["Goals"].sum().reset_index()
+    base = alt.Chart(division_data).properties(width=300, height=300,
+                                               title=alt.TitleParams(text="Goals Distribution by Division", fontSize=16, fontWeight=600))
+    outer = (
+        base.mark_arc(innerRadius=60, outerRadius=120, stroke="white", strokeWidth=2)
+        .encode(theta=alt.Theta("Goals:Q", title="Goals"),
+                color=alt.Color("Division:N", scale=alt.Scale(range=["#0ea5e9", "#f59e0b"]), title="Division"),
+                tooltip=["Division:N", alt.Tooltip("Goals:Q", format="d")])
+    )
+    center_text = base.mark_text(align="center", baseline="middle", fontSize=18, fontWeight="bold", color="#1e293b") \
+                      .encode(text=alt.value(f"Total\n{int(division_data['Goals'].sum())}"))
+    return outer + center_text
 
-    # Keep only useful columns
-    keep_order = ["TEAM","M","W","D","L","PTS","GF","GA","GD"]
-    df = df[[c for c in keep_order if c in df.columns]]
+def create_advanced_scatter_plot(df: pd.DataFrame):
+    if df.empty:
+        if PLOTLY_AVAILABLE:
+            fig = go.Figure(); fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False); return fig
+        return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
+    team_stats = df.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Goals=("Goals", "sum")).reset_index()
+    if PLOTLY_AVAILABLE:
+        fig = px.scatter(team_stats, x="Players", y="Goals", color="Division", size="Goals",
+                         hover_name="Team", hover_data={"Players": True, "Goals": True},
+                         title="Team Performance: Players vs Total Goals")
+        fig.update_traces(marker=dict(sizemode="diameter", sizemin=8, sizemax=30, line=dict(width=2, color="white"), opacity=0.85))
+        fig.update_layout(plot_bgcolor="white", paper_bgcolor="white", font=dict(family="Poppins", size=12),
+                          title=dict(font=dict(size=16, color="#1e293b")),
+                          xaxis=dict(title="Number of Players in Team", gridcolor="#f1f5f9", zeroline=False),
+                          yaxis=dict(title="Total Goals", gridcolor="#f1f5f9", zeroline=False),
+                          legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), height=400)
+        return fig
+    return (
+        alt.Chart(team_stats).mark_circle(size=100, opacity=0.85)
+        .encode(x=alt.X("Players:Q", title="Number of Players in Team"),
+                y=alt.Y("Goals:Q", title="Total Goals"),
+                color=alt.Color("Division:N", scale=alt.Scale(range=["#0ea5e9", "#f59e0b"]), title="Division"),
+                size=alt.Size("Goals:Q", legend=None),
+                tooltip=["Team:N", "Division:N", "Players:Q", "Goals:Q"])
+        .properties(title="Team Performance: Players vs Total Goals", height=400)
+    )
 
-    # Clean team
-    if "TEAM" in df.columns:
-        df["TEAM"] = df["TEAM"].astype(str).str.strip()
-
-    # Numbers
-    for c in ["M","W","D","L","GF","GA","GD","PTS"]:
-        if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-
-    # Compute missing metrics
-    if "M" not in df.columns and all(c in df.columns for c in ["W","D","L"]):
-        df["M"] = df["W"].fillna(0) + df["D"].fillna(0) + df["L"].fillna(0)
-    if "PTS" not in df.columns and all(c in df.columns for c in ["W","D"]):
-        df["PTS"] = df["W"].fillna(0)*3 + df["D"].fillna(0)*1
-    if "GD" not in df.columns and all(c in df.columns for c in ["GF","GA"]):
-        df["GD"] = df["GF"].fillna(0) - df["GA"].fillna(0)
-
-    # Sort standings
-    sort_cols = [c for c in ["PTS","GD","GF"] if c in df.columns]
-    if sort_cols:
-        df = df.sort_values(sort_cols, ascending=[False]*len(sort_cols), kind="mergesort")
-
-    # Final tidy
-    df = df.reset_index(drop=True)
-    return df
-
-def get_sheet_exact_or_ci(sheets: dict[str,pd.DataFrame], wanted: str) -> pd.DataFrame:
-    """Return a sheet by exact name or case-insensitive match; else empty df."""
-    if wanted in sheets:
-        return sheets[wanted]
-    lower_map = {k.lower(): k for k in sheets.keys()}
-    return sheets.get(lower_map.get(wanted.lower(), ""), pd.DataFrame())
-
-def build_point_tables_from_workbook(file_bytes: bytes) -> dict:
-    """Read three standings sheets from the same workbook bytes."""
-    sheets = parse_xlsx_sheets(file_bytes)
-    out = {}
-    for label in ["B-Division Group A", "B-Division Group B", "A-Division"]:
-        raw = get_sheet_exact_or_ci(sheets, label)
-        out[label] = normalize_point_table(raw)
-    return out
-
-def display_point_table(df: pd.DataFrame):
-    if df is None or df.empty:
-        st.info("No data found for this group yet.")
-        return
-    # Make sure numerics are ints for display, blanks for NaNs
-    display = df.copy()
-    for c in ["M","W","D","L","PTS","GF","GA","GD"]:
-        if c in display.columns:
-            display[c] = pd.to_numeric(display[c], errors="coerce").astype("Int64").astype("string").replace({"<NA>": ""})
-    col_cfg = {}
-    if "TEAM" in display.columns:
-        col_cfg["TEAM"] = st.column_config.TextColumn("TEAM", width="large")
-    for c in ["M","W","D","L","PTS","GF","GA","GD"]:
-        if c in display.columns:
-            col_cfg[c] = st.column_config.TextColumn(c, width="small")
-    st.dataframe(display, use_container_width=True, hide_index=True, column_config=col_cfg)
+def create_goals_distribution_histogram(df: pd.DataFrame):
+    if df.empty:
+        if PLOTLY_AVAILABLE:
+            fig = go.Figure(); fig.add_annotation(text="No data available", x=0.5, y=0.5, showarrow=False); return fig
+        return alt.Chart(pd.DataFrame({"note": ["No data available"]})).mark_text().encode(text="note:N")
+    player_goals = df.groupby(["Player", "Team"])["Goals"].sum().values
+    if PLOTLY_AVAILABLE:
+        fig = go.Figure(data=[go.Histogram(x=player_goals, nbinsx=max(1, len(set(player_goals))),
+                                           marker_line_color="white", marker_line_width=1.5, opacity=0.85,
+                                           hovertemplate="<b>%{x} Goals</b><br>%{y} Players<extra></extra>")])
+        fig.update_layout(title="Distribution of Goals per Player", xaxis_title="Goals per Player", yaxis_title="Number of Players",
+                          plot_bgcolor="white", paper_bgcolor="white", font=dict(family="Poppins", size=12),
+                          title_font=dict(size=16, color="#1e293b"),
+                          xaxis=dict(gridcolor="#f1f5f9", zeroline=False),
+                          yaxis=dict(gridcolor="#f1f5f9", zeroline=False), height=400)
+        return fig
+    hist_df = pd.DataFrame({"Goals": player_goals})
+    return (
+        alt.Chart(hist_df).mark_bar(opacity=0.85)
+        .encode(x=alt.X("Goals:Q", bin=alt.Bin(maxbins=10), title="Goals per Player"),
+                y=alt.Y("count():Q", title="Number of Players"),
+                tooltip=[alt.Tooltip("Goals:Q", bin=True, title="Goals"), alt.Tooltip("count():Q", title="Players")])
+        .properties(title="Distribution of Goals per Player", height=400)
+    )
 
 # ====================== UI HELPERS ================================
 def display_metric_cards(stats: dict):
@@ -633,24 +656,23 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
         )
     elif table_type == "records":
         keep = ["Player", "Team", "Division", "Goals"]
-        for opt in ["Appearances", "Yellow Cards", "Red Cards", "Last_Match", "Last_Action", "Card_Events"]:
+        for opt in ["Appearances", "Yellow Cards", "Red Cards", "Last Match", "Last Action", "Card Events"]:
             if opt in df.columns:
                 keep.append(opt)
         display_df = df[keep].copy()
 
-        # Numbers kept as ints
+        # Make sure Last Match shows blank when missing, not "None"
+        if "Last Match" in display_df.columns:
+            display_df["Last Match"] = pd.to_numeric(display_df["Last Match"], errors="coerce").astype("Int64")
+
+        # Coerce numeric columns and leave blanks for NA in object columns
         for c in ["Goals", "Appearances", "Yellow Cards", "Red Cards"]:
             if c in display_df.columns:
                 display_df[c] = pd.to_numeric(display_df[c], errors="coerce").fillna(0).astype(int)
 
-        # Last_Match shown as BLANK when missing (no "None" or "0")
-        if "Last_Match" in display_df.columns:
-            display_df["Last_Match"] = pd.to_numeric(display_df["Last_Match"], errors="coerce").astype("Int64").astype("string").replace({"<NA>": ""})
-
-        # Text columns cleaned to blank
-        for c in ["Last_Action", "Card_Events"]:
-            if c in display_df.columns:
-                display_df[c] = display_df[c].astype("string").replace({"None":"", "<NA>":"", "nan":""}).fillna("")
+        # Remove literal "None" strings from object columns
+        for c in display_df.select_dtypes(include="object").columns:
+            display_df[c] = display_df[c].replace({None: ""}).fillna("")
 
         display_df = display_df.sort_values(["Goals", "Player"], ascending=[False, True]).reset_index(drop=True)
 
@@ -664,9 +686,9 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
                 **({"Appearances": st.column_config.NumberColumn("Appearances", format="%d", width="small")} if "Appearances" in display_df.columns else {}),
                 **({"Yellow Cards": st.column_config.NumberColumn("Yellow", format="%d", width="small")} if "Yellow Cards" in display_df.columns else {}),
                 **({"Red Cards": st.column_config.NumberColumn("Red", format="%d", width="small")} if "Red Cards" in display_df.columns else {}),
-                **({"Last_Match": st.column_config.TextColumn("Last Match", width="small")} if "Last_Match" in display_df.columns else {}),
-                **({"Last_Action": st.column_config.TextColumn("Last Action", width="large")} if "Last_Action" in display_df.columns else {}),
-                **({"Card_Events": st.column_config.TextColumn("Card Events", width="large")} if "Card_Events" in display_df.columns else {}),
+                **({"Last Match": st.column_config.NumberColumn("Last Match", format="%d", width="small")} if "Last Match" in display_df.columns else {}),
+                **({"Last Action": st.column_config.TextColumn("Last Action", width="large")} if "Last Action" in display_df.columns else {}),
+                **({"Card Events": st.column_config.TextColumn("Card Events", width="large")} if "Card Events" in display_df.columns else {}),
             },
         )
 
@@ -681,18 +703,18 @@ def render_player_cards(df: pd.DataFrame):
         return
 
     work = df.copy()
+
     for col in ["Appearances", "Yellow Cards", "Red Cards", "Goals"]:
         if col in work.columns:
             work[col] = pd.to_numeric(work[col], errors="coerce")
 
-    # Aggregate per player (keep event/meta columns)
     agg_map = {"Goals": ("Goals", "sum")}
     if "Appearances" in work.columns: agg_map["Appearances"] = ("Appearances", "sum")
     if "Yellow Cards" in work.columns: agg_map["YellowCards"] = ("Yellow Cards", "sum")
     if "Red Cards" in work.columns:    agg_map["RedCards"]   = ("Red Cards", "sum")
-    if "Last_Match" in work.columns:   agg_map["LastMatch"]  = ("Last_Match", "max")
-    if "Last_Action" in work.columns:  agg_map["LastAction"] = ("Last_Action", "first")
-    if "Card_Events" in work.columns:  agg_map["CardEvents"] = ("Card_Events", "first")
+    if "Last Match" in work.columns:   agg_map["LastMatch"]  = ("Last Match", "max")
+    if "Last Action" in work.columns:  agg_map["LastAction"] = ("Last Action", "first")
+    if "Card Events" in work.columns:  agg_map["CardEvents"] = ("Card Events", "first")
 
     players = (
         work.groupby(["Player", "Team", "Division"])
@@ -722,14 +744,12 @@ def render_player_cards(df: pd.DataFrame):
         html.append(f'<div class="sub">{row["Team"]}</div>')
         html.append(f'<div class="muted">{row["Division"]}</div>')
 
-        # Goals
         html.append('<div class="row">')
         html.append('<div class="label">⚽ Goals</div>')
         html.append(f'<div class="dotbar"><span style="--pct:{pct_goals}"></span></div>')
         html.append(f'<div class="num">{goals}</div>')
         html.append('</div>')
 
-        # Optional Appearances
         if "Appearances" in players.columns:
             val = int(row["Appearances"])
             pct = f"{(val/max(max_app,1))*100:.1f}%"
@@ -739,7 +759,6 @@ def render_player_cards(df: pd.DataFrame):
             html.append(f'<div class="num">{val}</div>')
             html.append('</div>')
 
-        # Optional Yellow Cards
         if "YellowCards" in players.columns:
             val = int(row["YellowCards"])
             pct = f"{(val/max(max_yel,1))*100:.1f}%"
@@ -749,7 +768,6 @@ def render_player_cards(df: pd.DataFrame):
             html.append(f'<div class="num">{val}</div>')
             html.append('</div>')
 
-        # Optional Red Cards
         if "RedCards" in players.columns:
             val = int(row["RedCards"])
             pct = f"{(val/max(max_red,1))*100:.1f}%"
@@ -759,7 +777,6 @@ def render_player_cards(df: pd.DataFrame):
             html.append(f'<div class="num">{val}</div>')
             html.append('</div>')
 
-        # Action / Match chips (from CARDS)
         chips = []
         if "CardEvents" in players.columns and pd.notna(row.get("CardEvents", None)):
             for piece in str(row["CardEvents"]).split(" • "):
@@ -777,8 +794,8 @@ def render_player_cards(df: pd.DataFrame):
         else:
             html.append('<div style="margin-top:.5rem"><span class="pill">No awards</span></div>')
 
-        html.append('</div>')  # .pcard
-    html.append('</div>')      # .pcard-grid
+        html.append('</div>')
+    html.append('</div>')
 
     st.markdown("\n".join(html), unsafe_allow_html=True)
 
@@ -867,22 +884,146 @@ def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
                 mime="application/zip",
             )
 
+# ====================== POINT TABLE (Google Sheets) ===============
+POINT_TABLE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRpCD-Wh_NnGQjJ1Mh3tuU5Mdcl8TK41JopMUcSnfqww8wkPXKKgRyg7v4sC_vuUw/pub?output=xlsx"
+
+def _norm_key(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(s).lower()) if s is not None else ""
+
+def _coerce_first_row_as_header(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame()
+    df = df.dropna(how="all").dropna(axis=1, how="all")
+    if df.empty:
+        return pd.DataFrame()
+    header_idx = 0
+    for i in range(min(6, len(df))):
+        if df.iloc[i].notna().sum() >= 2:
+            header_idx = i
+            break
+    header = df.iloc[header_idx].astype(str).str.strip().tolist()
+    df2 = df.iloc[header_idx + 1 :].copy()
+    # ensure unique col names
+    cols, seen = [], {}
+    for c in header:
+        k = c if c not in seen else f"{c}_{seen[c]+1}"
+        seen[c] = seen.get(c, 0) + 1
+        cols.append(k)
+    df2.columns = cols
+    return df2.reset_index(drop=True)
+
+def normalize_point_table(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame()
+    df = df.copy()
+    rename = {}
+    for col in df.columns:
+        key = _norm_key(col)
+        if key in ("team","teams","club","clubs"): rename[col] = "Team"
+        elif key in ("p","mp","m","played","matchesplayed"): rename[col] = "P"
+        elif key in ("w","win","wins"): rename[col] = "W"
+        elif key in ("d","draw","draws"): rename[col] = "D"
+        elif key in ("l","loss","losses"): rename[col] = "L"
+        elif key in ("gf","goalsfor","goalsf","for"): rename[col] = "GF"
+        elif key in ("ga","goalsagainst","goalsa","against"): rename[col] = "GA"
+        elif key in ("gd","goaldifference","diff","difference"): rename[col] = "GD"
+        elif key in ("pts","point","points","score"): rename[col] = "Pts"
+    df = df.rename(columns=rename)
+
+    if "Team" in df.columns:
+        df["Team"] = df["Team"].astype(str).str.strip()
+
+    for c in ["P","W","D","L","GF","GA","GD","Pts"]:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    if "GD" not in df.columns and "GF" in df.columns and "GA" in df.columns:
+        df["GD"] = df["GF"] - df["GA"]
+
+    sort_cols = [c for c in ["Pts","GD","GF"] if c in df.columns]
+    if sort_cols:
+        df = df.sort_values(sort_cols, ascending=[False] + [False]*(len(sort_cols)-1), kind="mergesort")
+
+    # Final tidy
+    df = df.dropna(axis=1, how="all").reset_index(drop=True)
+    return df
+
+def _norm_sheetname(name: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(name).lower())
+
+def _pick_sheet_name(all_names: list[str], target: str) -> str | None:
+    want = _norm_sheetname(target)
+    for nm in all_names:
+        if _norm_sheetname(nm) == want:
+            return nm
+    # fallback: contains
+    for nm in all_names:
+        if _norm_sheetname(target) in _norm_sheetname(nm):
+            return nm
+    return None
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_point_tables(url: str) -> dict[str, pd.DataFrame]:
+    """
+    Download the published xlsx and return normalized point tables for:
+    'B-Division Group A', 'B-Division Group B', 'A-Division'
+    """
+    r = requests.get(url, timeout=30)
+    r.raise_for_status()
+    raw = r.content
+    sheets = safe_read_workbook(raw)  # header=None frames
+
+    # Coerce headers and normalize each sheet
+    cleaned = {name: normalize_point_table(_coerce_first_row_as_header(df)) for name, df in sheets.items()}
+
+    names = list(cleaned.keys())
+    out = {}
+    for label in ["B-Division Group A", "B-Division Group B", "A-Division"]:
+        sel = _pick_sheet_name(names, label)
+        out[label] = cleaned.get(sel, pd.DataFrame())
+    return out
+
+def display_point_table(df: pd.DataFrame):
+    if df is None or df.empty:
+        st.info("No data found for this group yet.")
+        return
+    # Show standard header labels
+    # Ensure blank strings for any object NA (no 'None')
+    show = df.copy()
+    for c in show.select_dtypes(include="object").columns:
+        show[c] = show[c].replace({None: ""}).fillna("")
+    # Keep common order if present
+    ordered = [c for c in ["Team","P","W","D","L","Pts","GF","GA","GD"] if c in show.columns]
+    if ordered:
+        show = show[ordered]
+    st.dataframe(
+        show,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            **({"Team": st.column_config.TextColumn("TEAM", width="large")} if "Team" in show.columns else {}),
+            **({"P": st.column_config.NumberColumn("M", format="%d", width="small")} if "P" in show.columns else {}),
+            **({"W": st.column_config.NumberColumn("W", format="%d", width="small")} if "W" in show.columns else {}),
+            **({"D": st.column_config.NumberColumn("D", format="%d", width="small")} if "D" in show.columns else {}),
+            **({"L": st.column_config.NumberColumn("L", format="%d", width="small")} if "L" in show.columns else {}),
+            **({"Pts": st.column_config.NumberColumn("PTS", format="%d", width="small")} if "Pts" in show.columns else {}),
+            **({"GF": st.column_config.NumberColumn("GF", format="%d", width="small")} if "GF" in show.columns else {}),
+            **({"GA": st.column_config.NumberColumn("GA", format="%d", width="small")} if "GA" in show.columns else {}),
+            **({"GD": st.column_config.NumberColumn("GD", format="%d", width="small")} if "GD" in show.columns else {}),
+        },
+    )
+
 # ====================== MAIN APP =================================
 def to_export_xlsx_url(sheet_link_or_id: str) -> str:
     """
-    Accept either a full Google Sheets link/id OR a published '...output=xlsx' URL,
-    and return a direct XLSX download URL.
+    Accept either a full Google Sheets link or just the doc id and return
+    an 'export?format=xlsx' URL that downloads the whole workbook.
     """
-    s = str(sheet_link_or_id).strip()
-    if "output=xlsx" in s:  # already a direct published XLSX
-        return s
-    m = re.search(r"/d/([A-Za-z0-9_-]+)/", s)
-    if m:
-        doc_id = m.group(1)
-    elif re.match(r"^[A-Za-z0-9_-]{20,}$", s):
-        doc_id = s
+    if re.match(r"^[A-Za-z0-9_-]{20,}$", sheet_link_or_id):
+        doc_id = sheet_link_or_id
     else:
-        return s
+        m = re.search(r"/d/([A-Za-z0-9_-]+)/", sheet_link_or_id)
+        doc_id = m.group(1) if m else sheet_link_or_id
     return f"https://docs.google.com/spreadsheets/d/{doc_id}/export?format=xlsx"
 
 def main():
@@ -900,9 +1041,9 @@ def main():
     )
     add_world_cup_watermark()
 
-    # 👉 Use your published XLSX link (works for both tournament & point tables)
-    GOOGLE_SHEETS_INPUT = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRpCD-Wh_NnGQjJ1Mh3tuU5Mdcl8TK41JopMUcSnfqww8wkPXKKgRyg7v4sC_vuUw/pub?output=xlsx"
-    GOOGLE_SHEETS_URL = to_export_xlsx_url(GOOGLE_SHEETS_INPUT)
+    # 👉 Set your Google Sheet doc ID (or paste the edit link) for GOALS + CARDS
+    GOOGLE_SHEET_DOC_ID = "1Bbx7nCS_j7g1wsK3gHpQQnWkpTqlwkHu"  # your sheet ID
+    GOOGLE_SHEETS_URL = to_export_xlsx_url(GOOGLE_SHEET_DOC_ID)
 
     # Sidebar
     with st.sidebar:
@@ -968,7 +1109,7 @@ def main():
         st.subheader("🟨🟥 Cards filter")
         card_filter = st.selectbox(
             "Show players with…",
-            ["All", "Yellow only", "Red only"],  # <-- removed "Any card"
+            ["All", "Yellow only", "Red only", "Any card"],
             index=0,
             key="cards_filter",
             help="Filter to players who have cards recorded on the CARDS sheet.",
@@ -977,13 +1118,10 @@ def main():
             tournament_data = tournament_data[tournament_data["Yellow Cards"] > 0]
         elif card_filter == "Red only":
             tournament_data = tournament_data[tournament_data["Red Cards"] > 0]
+        elif card_filter == "Any card":
+            tournament_data = tournament_data[(tournament_data["Yellow Cards"] > 0) | (tournament_data["Red Cards"] > 0)]
 
-    # Fetch workbook bytes once for point tables
-    with st.spinner("📑 Loading point tables…"):
-        wb_bytes = fetch_workbook_bytes(GOOGLE_SHEETS_URL)
-        point_sections = build_point_tables_from_workbook(wb_bytes)
-
-    # Tabs (sticky) — added one new tab for POINT TABLE
+    # Tabs (sticky) — POINT TABLE added
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
         ["📊 OVERVIEW", "⚡ QUICK INSIGHTS", "🏆 TEAMS", "👤 PLAYERS", "📈 ANALYTICS", "📋 POINT TABLE", "📥 DOWNLOADS"]
     )
@@ -1083,14 +1221,18 @@ def main():
     # TAB 6 — POINT TABLE (from Google Sheets)
     with tab6:
         st.header("📋 Point Table")
-        st.caption("Standings auto-read from your Google Sheets (sheets named **B-Division Group A**, **B-Division Group B**, **A-Division**).")
-        sub1, sub2, sub3 = st.tabs(["B-Division Group A", "B-Division Group B", "A-Division"])
-        with sub1:
-            display_point_table(point_sections.get("B-Division Group A", pd.DataFrame()))
-        with sub2:
-            display_point_table(point_sections.get("B-Division Group B", pd.DataFrame()))
-        with sub3:
-            display_point_table(point_sections.get("A-Division", pd.DataFrame()))
+        st.caption("Reading standings from your published Google Sheets (B-Division Group A, B-Division Group B, A-Division).")
+        try:
+            sections = fetch_point_tables(POINT_TABLE_URL)
+            sub1, sub2, sub3 = st.tabs(["B-Division Group A", "B-Division Group B", "A-Division"])
+            with sub1:
+                display_point_table(sections.get("B-Division Group A"))
+            with sub2:
+                display_point_table(sections.get("B-Division Group B"))
+            with sub3:
+                display_point_table(sections.get("A-Division"))
+        except Exception as e:
+            st.error(f"Couldn't load the Point Table workbook. {e}")
 
     # TAB 7 — Downloads
     with tab7:
