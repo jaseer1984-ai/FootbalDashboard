@@ -670,9 +670,9 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
             if c in display_df.columns:
                 display_df[c] = pd.to_numeric(display_df[c], errors="coerce").fillna(0).astype(int)
 
-        # Remove literal "None" strings from object columns
+        # Remove literal "None"/"none"/"NaN" strings and None objects from object columns
         for c in display_df.select_dtypes(include="object").columns:
-            display_df[c] = display_df[c].replace({None: ""}).fillna("")
+            display_df[c] = display_df[c].replace({"None": "", "none": "", "NaN": "", "nan": "", None: ""}).fillna("")
 
         display_df = display_df.sort_values(["Goals", "Player"], ascending=[False, True]).reset_index(drop=True)
 
@@ -987,11 +987,10 @@ def display_point_table(df: pd.DataFrame):
     if df is None or df.empty:
         st.info("No data found for this group yet.")
         return
-    # Show standard header labels
-    # Ensure blank strings for any object NA (no 'None')
+    # Blank any stringy "None"/"NaN" values
     show = df.copy()
     for c in show.select_dtypes(include="object").columns:
-        show[c] = show[c].replace({None: ""}).fillna("")
+        show[c] = show[c].replace({"None": "", "none": "", "NaN": "", "nan": "", None: ""}).fillna("")
     # Keep common order if present
     ordered = [c for c in ["Team","P","W","D","L","Pts","GF","GA","GD"] if c in show.columns]
     if ordered:
@@ -1109,7 +1108,7 @@ def main():
         st.subheader("🟨🟥 Cards filter")
         card_filter = st.selectbox(
             "Show players with…",
-            ["All", "Yellow only", "Red only", "Any card"],
+            ["All", "Yellow only", "Red only"],   # <-- removed “Any card”
             index=0,
             key="cards_filter",
             help="Filter to players who have cards recorded on the CARDS sheet.",
@@ -1118,8 +1117,6 @@ def main():
             tournament_data = tournament_data[tournament_data["Yellow Cards"] > 0]
         elif card_filter == "Red only":
             tournament_data = tournament_data[tournament_data["Red Cards"] > 0]
-        elif card_filter == "Any card":
-            tournament_data = tournament_data[(tournament_data["Yellow Cards"] > 0) | (tournament_data["Red Cards"] > 0)]
 
     # Tabs (sticky) — POINT TABLE added
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
