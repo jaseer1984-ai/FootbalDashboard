@@ -738,11 +738,13 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
                 **({"Appearances": st.column_config.NumberColumn("Appearances", format="%d", width="small")} if "Appearances" in display_df.columns else {}),
                 **({"Yellow Cards": st.column_config.NumberColumn("Yellow", format="%d", width="small")} if "Yellow Cards" in display_df.columns else {}),
                 **({"Red Cards": st.column_config.NumberColumn("Red", format="%d", width="small")} if "Red Cards" in display_df.columns else {}),
-                **({"Last Match": st.column_config.TextColumn("Last Match", width="small")} if "Last Match" in display_df.columns else {}),
-                **({"Last Action": st.column_config.TextColumn("Last Action", width="large")} if "Last Action" in display_df.columns else {}),
+                # ⬇️ renamed labels here
+                **({"Last Match": st.column_config.TextColumn("Match", width="small")} if "Last Match" in display_df.columns else {}),
+                **({"Last Action": st.column_config.TextColumn("Action", width="large")} if "Last Action" in display_df.columns else {}),
                 **({"Card Events": st.column_config.TextColumn("Card Events", width="large")} if "Card Events" in display_df.columns else {}),
             },
         )
+
 
 # ---------- Players Card View renderer ----------
 def render_player_cards(df: pd.DataFrame):
@@ -1332,3 +1334,4 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
         st.exception(e)
+
