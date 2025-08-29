@@ -91,6 +91,35 @@ def inject_advanced_css():
         .status-warn{ background:#fef9c3; border-left:4px solid #f59e0b; color:#713f12; }
         .status-err{ background:#fee2e2; border-left:4px solid #ef4444; color:#7f1d1d; }
 
+        /* ---------- KPI Cards (Overview) ---------- */
+        .kpi-grid{
+            display:grid; gap:14px;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            margin:.5rem 0 1rem;
+        }
+        .kpi-card{
+            position:relative; overflow:hidden;
+            background:#fff; border-radius:16px; border:1px solid #e5e7eb;
+            box-shadow:0 10px 24px rgba(2,6,23,.06);
+            padding:16px 18px; transition:.2s ease;
+        }
+        .kpi-card:hover{ transform:translateY(-2px); box-shadow:0 16px 34px rgba(2,6,23,.12); }
+        .kpi-card::after{
+            content:""; position:absolute; inset:0; pointer-events:none;
+            background:
+                radial-gradient(120px 120px at 90% -10%, rgba(14,165,233,.15), transparent 50%),
+                radial-gradient(120px 120px at -10% 110%, rgba(167,139,250,.12), transparent 50%);
+        }
+        .kpi-top{ display:flex; align-items:center; gap:8px;
+                  color:#64748b; font-weight:700; letter-spacing:.06em; font-size:.8rem; text-transform:uppercase; }
+        .kpi-ico{ font-size:1.15rem; }
+        .kpi-value{
+            margin-top:.35rem;
+            font-size:2.1rem; font-weight:800; line-height:1.1;
+            background:linear-gradient(45deg,#0284c7,#22c55e,#7c3aed);
+            -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+        }
+
         /* ---------- Player Card CSS ---------- */
         .pcard-grid{
             display:grid; gap:16px;
@@ -111,7 +140,8 @@ def inject_advanced_css():
             background:#f1f5f9; color:#334155; font-size:.75rem; font-weight:600;
             border:1px solid #e2e8f0;
         }
-        .pcard .row{ display:grid; grid-template-columns: 1fr auto 44px; align-items:center; gap:8px; margin-top:.5rem; }
+        .pcard .row{ display:grid; grid-template-columns: 1fr auto 44px; align-items:center; gap:8px;
+                     margin-top:.5rem; }
         .pcard .label{ color:#475569; font-size:.9rem; white-space:nowrap; }
         .pcard .dotbar{ height:8px; background: #f1f5f9; border-radius: 999px; position:relative; overflow:hidden; }
         .pcard .dotbar > span{
@@ -123,7 +153,6 @@ def inject_advanced_css():
             background:#f8fafc; border:1px solid #e5e7eb; border-radius:999px; padding:.18rem .55rem;
             display:inline-block;
         }
-        /* Center the right-most numbers (Goals / Yellow / Red / Appearances) on cards */
         .pcard .num{ text-align:center; font-weight:700; }
 
         /* Hide heading link icons */
@@ -689,10 +718,24 @@ def create_goals_distribution_histogram(df: pd.DataFrame):
 
 # ====================== UI HELPERS ================================
 def display_metric_cards(stats: dict):
-    c1, c2, c3 = st.columns(3)
-    c1.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_goals']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">TOTAL GOALS</div></div>""", unsafe_allow_html=True)
-    c2.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_players']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">PLAYERS</div></div>""", unsafe_allow_html=True)
-    c3.markdown(f"""<div class="metric-container"><div style="font-size:2.5rem;font-weight:700;color:#0ea5e9;margin-bottom:.5rem;">{stats['total_teams']}</div><div style="color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.05em;">TEAMS</div></div>""", unsafe_allow_html=True)
+    """Overview KPI cards: Total Goals, Players, Teams."""
+    html = f"""
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-top"><span class="kpi-ico">⚽</span><span>TOTAL GOALS</span></div>
+            <div class="kpi-value">{stats['total_goals']}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-top"><span class="kpi-ico">👥</span><span>PLAYERS</span></div>
+            <div class="kpi-value">{stats['total_players']}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-top"><span class="kpi-ico">🏆</span><span>TEAMS</span></div>
+            <div class="kpi-value">{stats['total_teams']}</div>
+        </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
 
 def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
     if df.empty:
@@ -746,7 +789,6 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
                 **({"Appearances": st.column_config.NumberColumn("Appearances", format="%d", width="small")} if "Appearances" in display_df.columns else {}),
                 **({"Yellow Cards": st.column_config.NumberColumn("Yellow", format="%d", width="small")} if "Yellow Cards" in display_df.columns else {}),
                 **({"Red Cards": st.column_config.NumberColumn("Red", format="%d", width="small")} if "Red Cards" in display_df.columns else {}),
-                # ⬇️ renamed labels here
                 **({"Last Match": st.column_config.TextColumn("Match", width="small")} if "Last Match" in display_df.columns else {}),
                 **({"Last Action": st.column_config.TextColumn("Action", width="large")} if "Last Action" in display_df.columns else {}),
                 **({"Card Events": st.column_config.TextColumn("Card Events", width="large")} if "Card Events" in display_df.columns else {}),
@@ -1187,7 +1229,7 @@ def main():
     # TAB 1 — Overview
     with tab1:
         st.header("📊 Tournament Overview")
-        display_metric_cards(current_stats)
+        display_metric_cards(current_stats)  # <-- KPI CARDS
         st.divider()
         col1, col2 = st.columns([2, 1])
         with col1:
