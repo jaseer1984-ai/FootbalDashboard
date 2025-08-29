@@ -758,22 +758,26 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
 def render_player_cards(df: pd.DataFrame):
     """
     Renders players as responsive cards.
-    Shows Appearances/Yellow/Red + Action/Match chips if those columns exist.
+    Uses SUM for Goals, but MAX for Appearances / Yellow / Red to avoid
+    double counting caused by multiple goal rows for the same player.
     """
-    if df.empty:
+    if df is None or df.empty:
         st.info("🔍 No players match your current filters.")
         return
 
+    # ✅ make a working copy (this was missing in your patch)
     work = df.copy()
 
-    for col in ["Appearances", "Yellow Cards", "Red Cards", "Goals"]:
+    # Coerce numerics where present
+    for col in ["Appearances", "Yellow Cards", "Red Cards", "Goals", "Last Match"]:
         if col in work.columns:
             work[col] = pd.to_numeric(work[col], errors="coerce")
 
+    # Aggregate: sum goals; take max for card/appearance fields
     agg_map = {"Goals": ("Goals", "sum")}
-    if "Appearances" in work.columns: agg_map["Appearances"] = ("Appearances", "sum")
-    if "Yellow Cards" in work.columns: agg_map["YellowCards"] = ("Yellow Cards", "sum")
-    if "Red Cards" in work.columns:    agg_map["RedCards"]   = ("Red Cards", "sum")
+    if "Appearances" in work.columns: agg_map["Appearances"] = ("Appearances", "max")
+    if "Yellow Cards" in work.columns: agg_map["YellowCards"] = ("Yellow Cards", "max")
+    if "Red Cards" in work.columns:    agg_map["RedCards"]   = ("Red Cards", "max")
     if "Last Match" in work.columns:   agg_map["LastMatch"]  = ("Last Match", "max")
     if "Last Action" in work.columns:  agg_map["LastAction"] = ("Last Action", "first")
     if "Card Events" in work.columns:  agg_map["CardEvents"] = ("Card Events", "first")
@@ -782,13 +786,20 @@ def render_player_cards(df: pd.DataFrame):
         work.groupby(["Player", "Team", "Division"])
             .agg(**agg_map)
             .reset_index()
-            .fillna(0)
     )
+
+    # Clean up numeric columns
+    for c in ["Goals", "Appearances", "YellowCards", "RedCards"]:
+        if c in players.columns:
+            players[c] = pd.to_numeric(players[c], errors="coerce").fillna(0).astype(int)
+    if "LastMatch" in players.columns:
+        players["LastMatch"] = pd.to_numeric(players["LastMatch"], errors="coerce").astype("Int64")
 
     players = players.sort_values(["Goals", "Player"], ascending=[False, True]).reset_index(drop=True)
     players.insert(0, "Rank", range(1, len(players) + 1))
 
-    max_goals = max(int(players["Goals"].max()), 1)
+    # For progress bars
+    max_goals = max(int(players["Goals"].max()) if "Goals" in players.columns else 0, 1)
     max_app = int(players["Appearances"].max()) if "Appearances" in players.columns else 0
     max_yel = int(players["YellowCards"].max()) if "YellowCards" in players.columns else 0
     max_red = int(players["RedCards"].max()) if "RedCards" in players.columns else 0
@@ -839,15 +850,18 @@ def render_player_cards(df: pd.DataFrame):
             html.append(f'<div class="num">{val}</div>')
             html.append('</div>')
 
+        # Action chips
         chips = []
-        if "CardEvents" in players.columns and pd.notna(row.get("CardEvents", None)):
-            for piece in str(row["CardEvents"]).split(" • "):
-                if piece.strip():
-                    chips.append(f'<span class="action">{piece.strip()}</span>')
-        elif "LastMatch" in players.columns or "LastAction" in players.columns:
-            lm = int(row["LastMatch"]) if "LastMatch" in players.columns and pd.notna(row["LastMatch"]) else None
+        ce = row.get("CardEvents", None)
+        if isinstance(ce, str) and ce.strip():
+            for piece in ce.split(" • "):
+                piece = piece.strip()
+                if piece:
+                    chips.append(f'<span class="action">{piece}</span>')
+        else:
+            lm = int(row["LastMatch"]) if "LastMatch" in players.columns and pd.notna(row.get("LastMatch")) else None
             la = row.get("LastAction", None)
-            if lm is not None or la:
+            if lm is not None or (isinstance(la, str) and la.strip()):
                 msg = (f"M{lm}: " if lm is not None else "") + (la or "Card recorded")
                 chips.append(f'<span class="action">{msg}</span>')
 
@@ -1338,3 +1352,4 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
         st.exception(e)
+
