@@ -553,62 +553,79 @@ def _inject_player_cards_css():
 
 def render_player_cards(df: pd.DataFrame):
     """Responsive player cards with rank + relative bars.
-    Always shows Appearances / Yellow / Red with 0 defaults."""
+    Safely handles missing Appearances/Yellow/Red columns by creating zero-filled fallbacks."""
     if df.empty:
         st.info("📇 No players to show.")
         return
 
-    # Aggregate per player (keep Team/Division) and coerce numeric fields if present
+    # --- normalize columns so they always exist ---
     work = df.copy()
-    for col in ["Appearances", "Yellow Cards", "YellowCards", "Red Cards", "RedCards", "Goals"]:
-        if col in work.columns:
-            work[col] = pd.to_numeric(work[col], errors="coerce")
 
+    # Goals
+    if "Goals" not in work.columns:
+        work["Goals"] = 0
+    work["Goals"] = pd.to_numeric(work["Goals"], errors="coerce").fillna(0).astype(int)
+
+    # Appearances: prefer 'Appearances', else create 0
+    if "Appearances" in work.columns:
+        work["Appearances"] = pd.to_numeric(work["Appearances"], errors="coerce").fillna(0).astype(int)
+    else:
+        work["Appearances"] = 0
+
+    # Yellow cards: support either 'Yellow Cards' or 'YellowCards'
+    if "Yellow Cards" in work.columns:
+        work["YellowCards"] = pd.to_numeric(work["Yellow Cards"], errors="coerce").fillna(0).astype(int)
+    elif "YellowCards" in work.columns:
+        work["YellowCards"] = pd.to_numeric(work["YellowCards"], errors="coerce").fillna(0).astype(int)
+    else:
+        work["YellowCards"] = 0
+
+    # Red cards: support either 'Red Cards' or 'RedCards'
+    if "Red Cards" in work.columns:
+        work["RedCards"] = pd.to_numeric(work["Red Cards"], errors="coerce").fillna(0).astype(int)
+    elif "RedCards" in work.columns:
+        work["RedCards"] = pd.to_numeric(work["RedCards"], errors="coerce").fillna(0).astype(int)
+    else:
+        work["RedCards"] = 0
+
+    # --- aggregate per player (keeping Team & Division) ---
     players = (
         work.groupby(["Player", "Team", "Division"], dropna=False)
             .agg(
                 Goals=("Goals", "sum"),
                 Appearances=("Appearances", "sum"),
-                YellowCards=("Yellow Cards", "sum") if "Yellow Cards" in work.columns else ("YellowCards", "sum"),
-                RedCards=("Red Cards", "sum") if "Red Cards" in work.columns else ("RedCards", "sum"),
+                YellowCards=("YellowCards", "sum"),
+                RedCards=("RedCards", "sum"),
             )
             .reset_index()
     )
 
-    # Fill missing/NaN with zeros for the card rows to always show
-    for col in ["Goals", "Appearances", "YellowCards", "RedCards"]:
-        if col not in players.columns:
-            players[col] = 0
-        players[col] = players[col].fillna(0).astype(int)
-
-    # Ranking by goals desc then name
+    # rank by goals desc then name
     players = players.sort_values(["Goals", "Player"], ascending=[False, True]).reset_index(drop=True)
     players.insert(0, "Rank", players.index + 1)
 
-    # Maxes for relative bars (avoid divide-by-zero)
-    max_goals = max(int(players["Goals"].max()), 1)
-    max_apps = max(int(players["Appearances"].max()), 1)
-    max_y = max(int(players["YellowCards"].max()), 1)
-    max_r = max(int(players["RedCards"].max()), 1)
+    # denominators for relative bars (avoid divide-by-zero)
+    max_goals = int(max(players["Goals"].max(), 1))
+    max_apps  = int(max(players["Appearances"].max(), 1))
+    max_y     = int(max(players["YellowCards"].max(), 1))
+    max_r     = int(max(players["RedCards"].max(), 1))
 
     _inject_player_cards_css()
 
     html = ['<div class="players-grid">']
     for _, r in players.iterrows():
-        rank  = int(r["Rank"])
-        name  = str(r.get("Player", "—")).strip() or "—"
-        team  = str(r.get("Team", "—")).strip() or "—"
-        div   = str(r.get("Division", "—")).strip() or "—"
+        rank = int(r["Rank"])
+        name = str(r.get("Player", "—")).strip() or "—"
+        team = str(r.get("Team", "—")).strip() or "—"
+        div  = str(r.get("Division", "—")).strip() or "—"
 
-        goals = int(r["Goals"])
-        apps  = int(r["Appearances"])
-        yel   = int(r["YellowCards"])
-        red   = int(r["RedCards"])
+        goals = int(r["Goals"]); apps = int(r["Appearances"])
+        yel   = int(r["YellowCards"]); red = int(r["RedCards"])
 
         gpct = round(goals / max_goals * 100, 2)
-        apct = round(apps  / max_apps  * 100, 2) if max_apps else 0
-        ypct = round(yel   / max_y     * 100, 2) if max_y else 0
-        rpct = round(red   / max_r     * 100, 2) if max_r else 0
+        apct = round(apps  / max_apps  * 100, 2)
+        ypct = round(yel   / max_y     * 100, 2)
+        rpct = round(red   / max_r     * 100, 2)
 
         html.append(f"""
         <div class="pcard">
@@ -649,6 +666,7 @@ def render_player_cards(df: pd.DataFrame):
 
     html.append("</div>")
     st.markdown("\n".join(html), unsafe_allow_html=True)
+
 
 
 # ====================== MAIN APP ==========================
@@ -993,4 +1011,5 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
         st.exception(e)
+
 
