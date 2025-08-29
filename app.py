@@ -111,8 +111,7 @@ def inject_advanced_css():
             background:#f1f5f9; color:#334155; font-size:.75rem; font-weight:600;
             border:1px solid #e2e8f0;
         }
-        .pcard .row{ display:grid; grid-template-columns: 1fr auto auto; align-items:center; gap:8px;
-                     margin-top:.5rem; }
+        .pcard .row{ display:grid; grid-template-columns: 1fr auto 44px; align-items:center; gap:8px; margin-top:.5rem; }
         .pcard .label{ color:#475569; font-size:.9rem; white-space:nowrap; }
         .pcard .dotbar{ height:8px; background: #f1f5f9; border-radius: 999px; position:relative; overflow:hidden; }
         .pcard .dotbar > span{
@@ -124,9 +123,18 @@ def inject_advanced_css():
             background:#f8fafc; border:1px solid #e5e7eb; border-radius:999px; padding:.18rem .55rem;
             display:inline-block;
         }
+        /* Center the right-most numbers (Goals / Yellow / Red / Appearances) on cards */
+        .pcard .num{ text-align:center; font-weight:700; }
 
         /* Hide heading link icons */
         h1 a, h2 a, h3 a, h4 a, h5 a, h6 a { display:none !important; }
+
+        /* ======== CENTER ALIGNMENT FOR TABLE HEADERS & NUMERIC CELLS ======== */
+        /* Center all headers in st.dataframe */
+        div[data-testid="stDataFrame"] thead th { text-align: center !important; }
+        div[data-testid="stDataFrame"] thead th div { justify-content: center !important; }
+        /* Center body cells (covers Goals / Yellow / Red / Match / PTS etc.) */
+        div[data-testid="stDataFrame"] tbody td { text-align: center !important; }
 
         @media (max-width:768px){
             .block-container{ padding: 1rem .5rem; margin:.5rem; width:95vw; max-width:95vw; }
@@ -884,7 +892,6 @@ def create_comprehensive_zip_report(full_df: pd.DataFrame, filtered_df: pd.DataF
 
 def create_download_section(full_df: pd.DataFrame, filtered_df: pd.DataFrame):
     st.subheader("📥 Download Reports")
-    # (Hidden) st.caption explanations removed
     col1, col2, col3 = st.columns(3)
 
     with col1:
@@ -1217,7 +1224,6 @@ def main():
         c6.metric("🟥 Red Cards", current_stats["total_red"])
         c7.metric("⚖️ Team Goals σ", current_stats["competitive_balance"])
         c8.metric("🎯 Avg Goals/Team", current_stats["avg_goals_per_team"])
-        # (Hidden) explanatory caption removed
         st.divider()
 
     # Helpers for PTS merge
@@ -1231,9 +1237,7 @@ def main():
             if "Pts" not in dfpts.columns:
                 continue
             tmp = dfpts[["Team", "Pts"]].copy()
-            # Normalize numeric
             tmp["Pts"] = pd.to_numeric(tmp["Pts"], errors="coerce").fillna(0).astype(int)
-            # Map sheet label -> division text used in tournament_data
             div_txt = "A Division" if label.lower().startswith("a") else "B Division"
             tmp["Division"] = div_txt
             tmp["TeamKey"] = tmp["Team"].apply(_norm_key)
@@ -1242,7 +1246,6 @@ def main():
         if not blocks:
             return pd.DataFrame(columns=["TeamKey","DivKey","Pts"])
         pts_all = pd.concat(blocks, ignore_index=True)
-        # If duplicates (e.g., same team across group A/B), keep max Pts
         pts_all = pts_all.groupby(["TeamKey","DivKey"], as_index=False)["Pts"].max()
         return pts_all
 
@@ -1257,7 +1260,7 @@ def main():
             st.subheader("📋 Teams Summary")
             teams_summary = tournament_data.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Total_Goals=("Goals", "sum")).reset_index()
 
-            # 👉 Merge PTS from point tables (robust name/division normalization)
+            # 👉 Merge PTS
             teams_summary["TeamKey"] = teams_summary["Team"].apply(_norm_key)
             teams_summary["DivKey"] = teams_summary["Division"].apply(_norm_div_key)
             if not pts_lookup_df.empty:
@@ -1267,9 +1270,10 @@ def main():
             teams_summary["Pts"] = teams_summary["Pts"].fillna(0).astype(int)
             teams_summary = teams_summary.drop(columns=["TeamKey","DivKey"])
 
+            # ↓↓↓ Reduced width (was use_container_width=True)
             st.dataframe(
                 teams_summary.sort_values("Total_Goals", ascending=False),
-                use_container_width=True, hide_index=True,
+                use_container_width=False, width=900, hide_index=True,
                 column_config={
                     "Team": st.column_config.TextColumn("Team", width="medium"),
                     "Division": st.column_config.TextColumn("Division", width="small"),
@@ -1308,7 +1312,6 @@ def main():
     # TAB 6 — POINT TABLE (from Google Sheets)
     with tab6:
         st.header("📋 Point Table")
-        # (Hidden) explanatory caption removed
         try:
             sections = fetch_point_tables(POINT_TABLE_URL)
             sub1, sub2, sub3 = st.tabs(["B-Division Group A", "B-Division Group B", "A-Division"])
