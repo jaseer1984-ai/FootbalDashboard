@@ -798,24 +798,16 @@ def create_enhanced_data_table(df: pd.DataFrame, table_type: str = "players"):
 
 # ---------- Players Card View renderer ----------
 def render_player_cards(df: pd.DataFrame):
-    """
-    Renders players as responsive cards.
-    Shows Appearances/Yellow/Red + Action/Match chips if those columns exist.
-    """
-    if df.empty:
-        st.info("🔍 No players match your current filters.")
-        return
-
-    work = df.copy()
-
+    ...
     for col in ["Appearances", "Yellow Cards", "Red Cards", "Goals"]:
         if col in work.columns:
             work[col] = pd.to_numeric(work[col], errors="coerce")
 
     agg_map = {"Goals": ("Goals", "sum")}
-    if "Appearances" in work.columns: agg_map["Appearances"] = ("Appearances", "sum")
-    if "Yellow Cards" in work.columns: agg_map["YellowCards"] = ("Yellow Cards", "sum")
-    if "Red Cards" in work.columns:    agg_map["RedCards"]   = ("Red Cards", "sum")
+    # ⬇️ use max here so duplicate rows don't inflate counts
+    if "Appearances" in work.columns: agg_map["Appearances"] = ("Appearances", "max")
+    if "Yellow Cards" in work.columns: agg_map["YellowCards"] = ("Yellow Cards", "max")
+    if "Red Cards" in work.columns:    agg_map["RedCards"]   = ("Red Cards", "max")
     if "Last Match" in work.columns:   agg_map["LastMatch"]  = ("Last Match", "max")
     if "Last Action" in work.columns:  agg_map["LastAction"] = ("Last Action", "first")
     if "Card Events" in work.columns:  agg_map["CardEvents"] = ("Card Events", "first")
@@ -826,6 +818,8 @@ def render_player_cards(df: pd.DataFrame):
             .reset_index()
             .fillna(0)
     )
+    ...
+
 
     players = players.sort_values(["Goals", "Player"], ascending=[False, True]).reset_index(drop=True)
     players.insert(0, "Rank", range(1, len(players) + 1))
@@ -1380,3 +1374,4 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"🚨 Application Error: {e}")
         st.exception(e)
+
