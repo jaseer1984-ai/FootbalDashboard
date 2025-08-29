@@ -1052,9 +1052,10 @@ def display_point_table(df: pd.DataFrame):
     ordered = [c for c in ["Team","P","W","D","L","Pts","GF","GA","GD"] if c in show.columns]
     if ordered:
         show = show[ordered]
+    # ↓↓↓ Reduced width for Point Table
     st.dataframe(
         show,
-        use_container_width=True,
+        use_container_width=False, width=900,
         hide_index=True,
         column_config={
             **({"Team": st.column_config.TextColumn("TEAM", width="large")} if "Team" in show.columns else {}),
@@ -1260,7 +1261,7 @@ def main():
             st.subheader("📋 Teams Summary")
             teams_summary = tournament_data.groupby(["Team", "Division"]).agg(Players=("Player", "nunique"), Total_Goals=("Goals", "sum")).reset_index()
 
-            # 👉 Merge PTS
+            # 👉 Merge PTS from point tables (robust name/division normalization)
             teams_summary["TeamKey"] = teams_summary["Team"].apply(_norm_key)
             teams_summary["DivKey"] = teams_summary["Division"].apply(_norm_div_key)
             if not pts_lookup_df.empty:
